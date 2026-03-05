@@ -401,7 +401,7 @@ struct BrowserPanelView: View {
                !panel.shouldSuppressWebViewFocus(),
                addressWasEmpty,
                !isWebViewBlank() {
-                addressBarFocused = false
+                setAddressBarFocused(false, reason: "panel.currentURL.loaded")
             }
         }
         .onChange(of: browserThemeModeRaw) { _ in
@@ -430,7 +430,7 @@ struct BrowserPanelView: View {
                 autoFocusOmnibarIfBlank()
             } else {
                 hideSuggestions()
-                addressBarFocused = false
+                setAddressBarFocused(false, reason: "panelFocus.onChange.unfocused")
             }
             syncWebViewResponderPolicyWithViewState(reason: "panelFocusChanged")
         }
@@ -497,7 +497,7 @@ struct BrowserPanelView: View {
 #if DEBUG
                 logBrowserFocusState(event: "addressBarFocus.externalBlur")
 #endif
-                addressBarFocused = false
+                setAddressBarFocused(false, reason: "notification.externalBlur")
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .ghosttyDefaultBackgroundDidChange)) { _ in
@@ -700,14 +700,14 @@ struct BrowserPanelView: View {
                         panel.navigateSmart(omnibarState.buffer)
                         hideSuggestions()
                         suppressNextFocusLostRevert = true
-                        addressBarFocused = false
+                        setAddressBarFocused(false, reason: "omnibar.submit.navigate")
                     }
                 },
                 onEscape: {
                     handleOmnibarEscape()
                 },
                 onFieldLostFocus: {
-                    addressBarFocused = false
+                    setAddressBarFocused(false, reason: "omnibar.fieldLostFocus")
                 },
                 onMoveSelection: { delta in
                     guard addressBarFocused, !omnibarState.suggestions.isEmpty else { return }
@@ -777,7 +777,7 @@ struct BrowserPanelView: View {
 #if DEBUG
                         logBrowserFocusState(event: "webContent.tapBlur")
 #endif
-                        addressBarFocused = false
+                        setAddressBarFocused(false, reason: "webContent.tapBlur")
                     }
                 })
             } else {
@@ -786,7 +786,7 @@ struct BrowserPanelView: View {
                     .onTapGesture {
                         onRequestPanelFocus()
                         if addressBarFocused {
-                            addressBarFocused = false
+                            setAddressBarFocused(false, reason: "placeholderContent.tapBlur")
                         }
                     }
             }
@@ -831,6 +831,23 @@ struct BrowserPanelView: View {
 #endif
         }
         cmuxWebView.allowsFirstResponderAcquisition = next
+    }
+
+    private func setAddressBarFocused(_ focused: Bool, reason: String) {
+#if DEBUG
+        if addressBarFocused == focused {
+            logBrowserFocusState(
+                event: "addressBarFocus.write.noop",
+                detail: "reason=\(reason) value=\(focused ? 1 : 0)"
+            )
+        } else {
+            logBrowserFocusState(
+                event: "addressBarFocus.write",
+                detail: "reason=\(reason) old=\(addressBarFocused ? 1 : 0) new=\(focused ? 1 : 0)"
+            )
+        }
+#endif
+        addressBarFocused = focused
     }
 
 #if DEBUG
@@ -950,7 +967,7 @@ struct BrowserPanelView: View {
             )
 #endif
         } else {
-            addressBarFocused = true
+            setAddressBarFocused(true, reason: "request.apply")
 #if DEBUG
             logBrowserFocusState(
                 event: "addressBarFocus.request.apply",
@@ -1013,7 +1030,7 @@ struct BrowserPanelView: View {
 #endif
             return
         }
-        addressBarFocused = true
+        setAddressBarFocused(true, reason: "autoFocus.blank")
 #if DEBUG
         logBrowserFocusState(event: "addressBarFocus.autoFocus.apply")
 #endif
@@ -1047,7 +1064,7 @@ struct BrowserPanelView: View {
 #if DEBUG
             logBrowserFocusState(event: "addressBar.tap.asyncSetFocused")
 #endif
-            addressBarFocused = true
+            setAddressBarFocused(true, reason: "omnibar.tap.async")
         }
     }
 
@@ -1079,7 +1096,7 @@ struct BrowserPanelView: View {
         hideSuggestions()
         inlineCompletion = nil
         suppressNextFocusLostRevert = true
-        addressBarFocused = false
+        setAddressBarFocused(false, reason: "suggestion.commit")
     }
 
     private func handleOmnibarEscape() {
@@ -1380,7 +1397,7 @@ struct BrowserPanelView: View {
         }
         if effects.shouldBlurToWebView {
             hideSuggestions()
-            addressBarFocused = false
+            setAddressBarFocused(false, reason: "effects.blurToWebView")
             DispatchQueue.main.async {
                 guard isFocused else { return }
                 guard let window = panel.webView.window,
@@ -2418,7 +2435,11 @@ private final class OmnibarNativeTextField: NSTextField {
 
     override func mouseDown(with event: NSEvent) {
         #if DEBUG
-        dlog("browser.omnibarClick")
+        let frType = window?.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"
+        dlog(
+            "browser.omnibarClick win=\(window?.windowNumber ?? -1) " +
+            "fr=\(frType) hasEditor=\(currentEditor() == nil ? 0 : 1)"
+        )
         #endif
         onPointerDown?()
 
@@ -2426,7 +2447,14 @@ private final class OmnibarNativeTextField: NSTextField {
             // First click — activate editing and select all (standard URL bar behavior).
             // Avoids NSTextView's tracking loop which can spin forever if text layout
             // enters an infinite invalidation cycle (e.g. under memory pressure).
-            window?.makeFirstResponder(self)
+            let result = window?.makeFirstResponder(self) ?? false
+#if DEBUG
+            let frAfter = window?.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"
+            dlog(
+                "browser.omnibarClick.makeFirstResponder result=\(result ? 1 : 0) " +
+                "win=\(window?.windowNumber ?? -1) fr=\(frAfter)"
+            )
+#endif
             currentEditor()?.selectAll(nil)
         } else {
             // Already editing — allow normal click-to-place-cursor and drag-to-select.
@@ -2434,6 +2462,9 @@ private final class OmnibarNativeTextField: NSTextField {
             // a timeout. IMPORTANT: must use a background queue because super.mouseDown
             // blocks the main thread in NSTextView's tracking loop, so
             // DispatchQueue.main.asyncAfter would never fire.
+#if DEBUG
+            dlog("browser.omnibarClick.editorTracking begin")
+#endif
             let cancelled = DispatchWorkItem { /* sentinel */ }
             let windowNumber = window?.windowNumber ?? 0
             let location = event.locationInWindow
@@ -2455,6 +2486,9 @@ private final class OmnibarNativeTextField: NSTextField {
             }
             super.mouseDown(with: event)
             cancelled.cancel()
+#if DEBUG
+            dlog("browser.omnibarClick.editorTracking end")
+#endif
         }
     }
 
@@ -2511,6 +2545,35 @@ private struct OmnibarTextFieldRepresentable: NSViewRepresentable {
             self.parent = parent
         }
 
+#if DEBUG
+        func logFocusEvent(_ event: String, detail: String = "") {
+            let window = parentField?.window
+            let responder = window?.firstResponder
+            let responderType = responder.map { String(describing: type(of: $0)) } ?? "nil"
+            let responderIsField: Int = {
+                guard let field = parentField else { return 0 }
+                if responder === field { return 1 }
+                if let editor = responder as? NSTextView,
+                   (editor.delegate as? NSTextField) === field {
+                    return 1
+                }
+                return 0
+            }()
+            let pendingValue: String = {
+                guard let pendingFocusRequest else { return "nil" }
+                return pendingFocusRequest ? "focus" : "blur"
+            }()
+            var line =
+                "browser.focus.field event=\(event) focused=\(parent.isFocused ? 1 : 0) " +
+                "pending=\(pendingValue) suppressWeb=\(parent.shouldSuppressWebViewFocus() ? 1 : 0) " +
+                "win=\(window?.windowNumber ?? -1) fr=\(responderType) frIsField=\(responderIsField)"
+            if !detail.isEmpty {
+                line += " \(detail)"
+            }
+            dlog(line)
+        }
+#endif
+
         deinit {
             if let selectionObserver {
                 NotificationCenter.default.removeObserver(selectionObserver)
@@ -2541,8 +2604,14 @@ private struct OmnibarTextFieldRepresentable: NSViewRepresentable {
         }
 
         func controlTextDidBeginEditing(_ obj: Notification) {
+#if DEBUG
+            logFocusEvent("controlTextDidBeginEditing")
+#endif
             if !parent.isFocused {
                 DispatchQueue.main.async {
+#if DEBUG
+                    self.logFocusEvent("controlTextDidBeginEditing.asyncSetFocused", detail: "old=0 new=1")
+#endif
                     self.parent.isFocused = true
                 }
             }
@@ -2551,16 +2620,32 @@ private struct OmnibarTextFieldRepresentable: NSViewRepresentable {
         }
 
         func controlTextDidEndEditing(_ obj: Notification) {
+#if DEBUG
+            let nextOther = nextResponderIsOtherTextField(window: parentField?.window)
+            logFocusEvent(
+                "controlTextDidEndEditing",
+                detail: "nextOther=\(nextOther ? 1 : 0) shouldReacquire=\(shouldReacquireFocusAfterEndEditing(window: parentField?.window) ? 1 : 0)"
+            )
+#endif
             if parent.isFocused {
                 if shouldReacquireFocusAfterEndEditing(window: parentField?.window) {
+#if DEBUG
+                    logFocusEvent("controlTextDidEndEditing.reacquire.begin")
+#endif
                     guard pendingFocusRequest != true else { return }
                     pendingFocusRequest = true
                     DispatchQueue.main.async { [weak self] in
                         guard let self else { return }
                         self.pendingFocusRequest = nil
+#if DEBUG
+                        self.logFocusEvent("controlTextDidEndEditing.reacquire.tick")
+#endif
                         guard self.parent.isFocused else { return }
                         guard let field = self.parentField, let window = field.window else { return }
                         guard self.shouldReacquireFocusAfterEndEditing(window: window) else {
+#if DEBUG
+                            self.logFocusEvent("controlTextDidEndEditing.reacquire.cancel")
+#endif
                             self.parent.onFieldLostFocus()
                             return
                         }
@@ -2571,11 +2656,21 @@ private struct OmnibarTextFieldRepresentable: NSViewRepresentable {
                             field.currentEditor() != nil ||
                             ((fr as? NSTextView)?.delegate as? NSTextField) === field
                         if !isAlreadyFocused {
+#if DEBUG
+                            self.logFocusEvent("controlTextDidEndEditing.reacquire.apply")
+#endif
                             window.makeFirstResponder(field)
+                        } else {
+#if DEBUG
+                            self.logFocusEvent("controlTextDidEndEditing.reacquire.skip", detail: "reason=already_focused")
+#endif
                         }
                     }
                     return
                 }
+#if DEBUG
+                logFocusEvent("controlTextDidEndEditing.blur")
+#endif
                 parent.onFieldLostFocus()
             }
             detachSelectionObserver()
@@ -2804,28 +2899,52 @@ private struct OmnibarTextFieldRepresentable: NSViewRepresentable {
                 nsView.currentEditor() != nil ||
                 ((firstResponder as? NSTextView)?.delegate as? NSTextField) === nsView
             if isFocused, !isFirstResponder, context.coordinator.pendingFocusRequest != true {
+#if DEBUG
+                context.coordinator.logFocusEvent(
+                    "updateNSView.requestFocus.begin",
+                    detail: "isFocused=1 isFirstResponder=0"
+                )
+#endif
                 // Defer to avoid triggering input method XPC during layout pass,
                 // which can crash via re-entrant view hierarchy modification.
                 context.coordinator.pendingFocusRequest = true
                 DispatchQueue.main.async { [weak nsView, weak coordinator = context.coordinator] in
                     coordinator?.pendingFocusRequest = nil
                     guard let nsView, let window = nsView.window else { return }
+#if DEBUG
+                    coordinator?.logFocusEvent("updateNSView.requestFocus.tick")
+#endif
                     let fr = window.firstResponder
                     let alreadyFocused = fr === nsView ||
                         nsView.currentEditor() != nil ||
                         ((fr as? NSTextView)?.delegate as? NSTextField) === nsView
                     guard !alreadyFocused else { return }
+#if DEBUG
+                    coordinator?.logFocusEvent("updateNSView.requestFocus.apply")
+#endif
                     window.makeFirstResponder(nsView)
                 }
             } else if !isFocused, isFirstResponder, context.coordinator.pendingFocusRequest != false {
+#if DEBUG
+                context.coordinator.logFocusEvent(
+                    "updateNSView.requestBlur.begin",
+                    detail: "isFocused=0 isFirstResponder=1"
+                )
+#endif
                 context.coordinator.pendingFocusRequest = false
                 DispatchQueue.main.async { [weak nsView, weak coordinator = context.coordinator] in
                     coordinator?.pendingFocusRequest = nil
                     guard let nsView, let window = nsView.window else { return }
+#if DEBUG
+                    coordinator?.logFocusEvent("updateNSView.requestBlur.tick")
+#endif
                     let fr = window.firstResponder
                     let stillFirst = fr === nsView ||
                         ((fr as? NSTextView)?.delegate as? NSTextField) === nsView
                     guard stillFirst else { return }
+#if DEBUG
+                    coordinator?.logFocusEvent("updateNSView.requestBlur.apply")
+#endif
                     window.makeFirstResponder(nil)
                 }
             }
