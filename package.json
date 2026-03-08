@@ -1,6 +1,11 @@
 {
+  "scripts": {
+    "cmux:mcp": "node scripts/cmux-mcp-server.mjs"
+  },
   "dependencies": {
-    "vercel": "^50.9.5"
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "vercel": "^50.9.5",
+    "zod": "^4.3.6"
   },
   "license": "AGPL-3.0-or-later"
 }

@@ -107,6 +107,59 @@ The in-app browser has a scriptable API ported from [agent-browser](https://gith
 
 Everything is scriptable through the CLI and socket API — create workspaces/tabs, split panes, send keystrokes, open URLs in the browser.
 
+## MCP server
+
+cmux now includes an initial local MCP server for external agents that want to steer cmux programmatically instead of shelling out directly.
+
+What it wraps today:
+- `system.identify` and `tree` for discovery
+- window, workspace, pane, and surface control through the existing `cmux` CLI
+- terminal interaction via `read-screen`, `send`, and `send-key`
+- a first-pass browser wrapper for common `cmux browser ...` actions
+
+The server intentionally reuses the existing CLI and socket surface instead of introducing a second control plane, so MCP clients get the same handle model (`window:N`, `workspace:N`, `pane:N`, `surface:N`) and routing behavior that cmux already documents.
+
+Install the Node dependencies once:
+
+```bash
+npm install
+```
+
+Run over stdio:
+
+```bash
+npm run cmux:mcp
+```
+
+Run over HTTP:
+
+```bash
+npm run cmux:mcp -- --transport http --host 127.0.0.1 --port 8765
+```
+
+Useful environment variables:
+
+```bash
+export CMUX_MCP_CMUX_BIN=/path/to/cmux
+export CMUX_MCP_SOCKET_PATH=/tmp/cmux.sock
+export CMUX_MCP_SOCKET_PASSWORD=...
+export CMUX_MCP_ID_FORMAT=refs
+```
+
+Available MCP tools:
+- `cmux_identify`
+- `cmux_tree`
+- `cmux_list`
+- `cmux_control`
+- `cmux_terminal`
+- `cmux_browser`
+
+Term mapping for MCP clients:
+- `window` is a native macOS cmux window
+- `workspace` is the sidebar tab-like container
+- `pane` is a split region inside a workspace
+- `surface` is a tab inside a pane, usually the most stable automation target
+
 ## The Zen of cmux
 
 cmux is not prescriptive about how developers hold their tools. It's a terminal and browser with a CLI, and the rest is up to you.
