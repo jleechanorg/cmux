@@ -22507,31 +22507,8 @@ struct CMUXCLI {
         return nil
     }
 
-    private func summarizeClaudeHookNotification(parsedInput: ClaudeHookParsedInput) -> (subtitle: String, body: String) {
-        guard let object = parsedInput.object else {
-            if let fallback = parsedInput.rawFallback, !fallback.isEmpty {
-                return classifyClaudeNotification(signal: fallback, message: fallback)
-            }
-            return ("Waiting", "Claude is waiting for your input")
-        }
-
-        let nested = (object["notification"] as? [String: Any]) ?? (object["data"] as? [String: Any]) ?? [:]
-        let signalParts = [
-            firstString(in: object, keys: ["event", "event_name", "hook_event_name", "type", "kind"]),
-            firstString(in: object, keys: ["notification_type", "matcher", "reason"]),
-            firstString(in: nested, keys: ["type", "kind", "reason"])
-        ]
-        let messageCandidates = [
-            firstString(in: object, keys: ["message", "body", "text", "prompt", "error", "description"]),
-            firstString(in: nested, keys: ["message", "body", "text", "prompt", "error", "description"])
-        ]
-        let message = messageCandidates.compactMap { $0 }.first ?? "Claude needs your input"
-        let normalizedMessage = normalizedSingleLine(message)
-        let signal = signalParts.compactMap { $0 }.joined(separator: " ")
-        var classified = classifyClaudeNotification(signal: signal, message: normalizedMessage)
-
-        classified.body = truncate(classified.body, maxLength: 180)
-        return classified
+    private func summarizeClaudeHookNotification(rawInput: String) -> (subtitle: String, body: String) {
+        ClaudeHookHelpers.summarizeNotification(rawInput: rawInput)
     }
 
     private func summarizeAgentHookNotification(
@@ -22887,6 +22864,10 @@ struct CMUXCLI {
         return ("Attention", "Claude needs your attention")
     }
 
+    private func dedupeBranchContextLines(_ value: String) -> String {
+        ClaudeHookHelpers.dedupeBranchContextLines(value)
+    }
+
     private func containsCompletionCue(_ lowercasedText: String) -> Bool {
         notificationCueTokens(lowercasedText).contains { token in
             token == "done"
@@ -22937,32 +22918,19 @@ struct CMUXCLI {
     }
 
     private func firstString(in object: [String: Any], keys: [String]) -> String? {
-        for key in keys {
-            guard let value = object[key] else { continue }
-            if let string = value as? String {
-                let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    return trimmed
-                }
-            }
-        }
-        return nil
+        ClaudeHookHelpers.firstString(in: object, keys: keys)
     }
 
     private func normalizedSingleLine(_ value: String) -> String {
-        let collapsed = value.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        return collapsed.trimmingCharacters(in: .whitespacesAndNewlines)
+        ClaudeHookHelpers.normalizedSingleLine(value)
     }
 
     private func truncate(_ value: String, maxLength: Int) -> String {
-        guard value.count > maxLength else { return value }
-        let index = value.index(value.startIndex, offsetBy: max(0, maxLength - 1))
-        return String(value[..<index]) + "…"
+        ClaudeHookHelpers.truncate(value, maxLength: maxLength)
     }
 
     private func sanitizeNotificationField(_ value: String) -> String {
-        return normalizedSingleLine(value)
-            .replacingOccurrences(of: "|", with: "¦")
+        ClaudeHookHelpers.sanitizeNotificationField(value)
     }
 
     private func notificationPayload(title: String, subtitle: String, body: String) -> String {
