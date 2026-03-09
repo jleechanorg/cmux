@@ -1,0 +1,10 @@
+[workspace]
+members = ["cmux-core", "cmux-gtk"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["cmux team"]
+license = "MIT"
+repository = "https://github.com/manaflow-ai/cmux"
