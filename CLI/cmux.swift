@@ -6511,128 +6511,31 @@ struct CMUXCLI {
     }
 
     private func summarizeClaudeHookNotification(rawInput: String) -> (subtitle: String, body: String) {
-        let trimmed = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return ("Waiting", "Claude is waiting for your input")
-        }
-
-        guard let data = trimmed.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data, options: []),
-              let object = json as? [String: Any] else {
-            let fallback = truncate(normalizedSingleLine(trimmed), maxLength: 180)
-            return classifyClaudeNotification(signal: fallback, message: fallback)
-        }
-
-        let nested = (object["notification"] as? [String: Any]) ?? (object["data"] as? [String: Any]) ?? [:]
-        let signalParts = [
-            firstString(in: object, keys: ["event", "event_name", "hook_event_name", "type", "kind"]),
-            firstString(in: object, keys: ["notification_type", "matcher", "reason"]),
-            firstString(in: nested, keys: ["type", "kind", "reason"])
-        ]
-        let messageCandidates = [
-            firstString(in: object, keys: ["message", "body", "text", "prompt", "error", "description"]),
-            firstString(in: nested, keys: ["message", "body", "text", "prompt", "error", "description"])
-        ]
-        let session = firstString(in: object, keys: ["session_id", "sessionId"])
-        let message = messageCandidates.compactMap { $0 }.first ?? "Claude needs your input"
-        let dedupedMessage = dedupeBranchContextLines(message)
-        let normalizedMessage = normalizedSingleLine(dedupedMessage)
-        let signal = signalParts.compactMap { $0 }.joined(separator: " ")
-        var classified = classifyClaudeNotification(signal: signal, message: normalizedMessage)
-
-        if let session, !session.isEmpty {
-            let shortSession = String(session.prefix(8))
-            if !classified.body.contains(shortSession) {
-                classified.body = "\(classified.body) [\(shortSession)]"
-            }
-        }
-
-        classified.body = truncate(classified.body, maxLength: 180)
-        return classified
+        ClaudeHookHelpers.summarizeNotification(rawInput: rawInput)
     }
 
     private func classifyClaudeNotification(signal: String, message: String) -> (subtitle: String, body: String) {
-        let lower = "\(signal) \(message)".lowercased()
-        if lower.contains("permission") || lower.contains("approve") || lower.contains("approval") {
-            let body = message.isEmpty ? "Approval needed" : message
-            return ("Permission", body)
-        }
-        if lower.contains("error") || lower.contains("failed") || lower.contains("exception") {
-            let body = message.isEmpty ? "Claude reported an error" : message
-            return ("Error", body)
-        }
-        if lower.contains("idle") || lower.contains("wait") || lower.contains("input") || lower.contains("prompt") {
-            let body = message.isEmpty ? "Claude is waiting for your input" : message
-            return ("Waiting", body)
-        }
-        let body = message.isEmpty ? "Claude needs your input" : message
-        return ("Attention", body)
+        ClaudeHookHelpers.classifyNotification(signal: signal, message: message)
     }
 
     private func dedupeBranchContextLines(_ value: String) -> String {
-        let lines = value.components(separatedBy: .newlines)
-        guard lines.count > 1 else { return value }
-
-        var lastIndexByPath: [String: Int] = [:]
-        for (index, line) in lines.enumerated() {
-            guard let path = branchContextPath(from: line) else { continue }
-            lastIndexByPath[path] = index
-        }
-        guard !lastIndexByPath.isEmpty else { return value }
-
-        let deduped = lines.enumerated().compactMap { index, line -> String? in
-            guard let path = branchContextPath(from: line) else { return line }
-            return lastIndexByPath[path] == index ? line : nil
-        }
-        return deduped.joined(separator: "\n")
-    }
-
-    private func branchContextPath(from line: String) -> String? {
-        let parts = line.split(separator: "•", maxSplits: 1, omittingEmptySubsequences: false)
-        guard parts.count == 2 else { return nil }
-
-        let branch = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
-        let path = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !branch.isEmpty, !path.isEmpty else { return nil }
-
-        let looksLikePath = path.hasPrefix("/") || path.hasPrefix("~") || path.hasPrefix(".") || path.contains("/")
-        guard looksLikePath else { return nil }
-
-        let trimmedQuotes = path.trimmingCharacters(in: CharacterSet(charactersIn: "`'\""))
-        let expanded = NSString(string: trimmedQuotes).expandingTildeInPath
-        let standardized = NSString(string: expanded).standardizingPath
-        let normalized = standardized.trimmingCharacters(in: .whitespacesAndNewlines)
-        return normalized.isEmpty ? nil : normalized
+        ClaudeHookHelpers.dedupeBranchContextLines(value)
     }
 
     private func firstString(in object: [String: Any], keys: [String]) -> String? {
-        for key in keys {
-            guard let value = object[key] else { continue }
-            if let string = value as? String {
-                let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    return trimmed
-                }
-            }
-        }
-        return nil
+        ClaudeHookHelpers.firstString(in: object, keys: keys)
     }
 
     private func normalizedSingleLine(_ value: String) -> String {
-        let collapsed = value.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        return collapsed.trimmingCharacters(in: .whitespacesAndNewlines)
+        ClaudeHookHelpers.normalizedSingleLine(value)
     }
 
     private func truncate(_ value: String, maxLength: Int) -> String {
-        guard value.count > maxLength else { return value }
-        let index = value.index(value.startIndex, offsetBy: max(0, maxLength - 1))
-        return String(value[..<index]) + "…"
+        ClaudeHookHelpers.truncate(value, maxLength: maxLength)
     }
 
     private func sanitizeNotificationField(_ value: String) -> String {
-        let normalized = normalizedSingleLine(value)
-            .replacingOccurrences(of: "|", with: "¦")
-        return truncate(normalized, maxLength: 180)
+        ClaudeHookHelpers.sanitizeNotificationField(value)
     }
 
     private func versionSummary() -> String {
