@@ -376,3 +376,50 @@ Each phase must pass its Docker tier before merging:
 | 5. Splits | `gtk` | Split/close/navigate tests pass |
 | 6. Notifications | `terminal` | Process monitoring + state machine |
 | 7. Polish | `gtk` | Full test suite green |
+
+---
+
+## Multi-client architecture (Phase 8+)
+
+Once the GTK4 app is stable, cmux Linux expands to three real usable clients
+sharing a single `cmux-core` daemon. See
+[roadmap/multi-client.md](multi-client.md) in `cmux_ubuntu` for the full design.
+
+### Summary
+
+```
+┌─────────────────────────────────────────────────────┐
+│ cmux-core  (Rust daemon)                            │
+│  AppState · WorkspaceModel · TabModel · split_tree  │
+│  Unix socket (/tmp/cmux.sock) + HTTP/WS (:3000)     │
+└───────┬──────────────────────────────────────────┘
+        │
+   ┌────┼───────────────────┐
+   │    │                   │
+ascii  web               gtk4
+(rata- (React +          (existing
+ tui)   xterm.js)         cmux-gtk)
+```
+
+| Client | How to run | Use case |
+|---|---|---|
+| `cmux-ascii` | `cargo run -p cmux-ascii` | Any terminal, SSH, CI |
+| `cmux-web` | `cargo run -- --web` → browser | Remote access, agents |
+| `cmux-gtk` | `cargo run -p cmux-gtk` | Native GTK4 desktop |
+
+### Design principles
+
+- `cmux-core` has zero GTK/VTE dependencies — compiles on any platform
+- All clients speak the same line-delimited JSON socket protocol
+- Business logic lives **only** in cmux-core; clients are pure renderers
+- The same test assertion set runs against all three clients via adapter pattern
+
+### Relation to macOS cmux
+
+The macOS cmux app already implements this pattern:
+- The socket protocol (`list_workspaces`, `send_surface`, `read_screen`) is
+  cmux-core's API surface on macOS
+- The Linux port makes this explicit with a standalone `cmux-core` crate and
+  multiple UI client crates in the workspace
+
+Beads tracking this work: `cmux-gtk-j2l` (epic) in the `cmux_ubuntu` repo.
