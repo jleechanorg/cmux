@@ -116,6 +116,8 @@ class CmuxMcpServer:
 
         try:
             if method == "initialize":
+                if request_id is None:
+                    return
                 requested_version = params.get("protocolVersion")
                 if isinstance(requested_version, str) and requested_version:
                     if requested_version != self._protocol_version:
@@ -132,14 +134,20 @@ class CmuxMcpServer:
                 return
 
             if method == "ping":
+                if request_id is None:
+                    return
                 self._write_response(request_id, {})
                 return
 
             if method == "tools/list":
+                if request_id is None:
+                    return
                 self._write_response(request_id, {"tools": self._tools()})
                 return
 
             if method == "tools/call":
+                if request_id is None:
+                    return
                 name = params.get("name")
                 arguments = params.get("arguments") or {}
                 result = self._call_tool(name, arguments)

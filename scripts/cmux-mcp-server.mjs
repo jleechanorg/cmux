@@ -115,7 +115,7 @@ function formatStructured(result, extra = {}) {
   return {
     ok: true,
     command: result.command,
-    argv: result.argv,
+    argv: redactArgv(result.argv ?? []),
     stdout: result.stdout,
     stderr: result.stderr,
     data: result.data,
@@ -303,11 +303,11 @@ function buildControlCommand(input) {
             options: common,
           };
         case 'next':
-          return { command: 'next-window', args: [], options: common };
         case 'previous':
-          return { command: 'previous-window', args: [], options: common };
         case 'last':
-          return { command: 'last-window', args: [], options: common };
+          throw new Error(
+            'Workspace cycle actions (next/previous/last) are not implemented; use cmux_control with action select and workspace ID',
+          );
         default:
           break;
       }
