@@ -57,8 +57,38 @@ function loadConfig() {
   };
 }
 
+/**
+ * Filters flag-value pairs: when a value is empty, omits both the flag and value
+ * to avoid orphaned flags. Standalone flags (e.g. --scrollback at end) are kept.
+ */
 function compactArgs(values) {
-  return values.filter((value) => value !== undefined && value !== null && value !== '');
+  const out = [];
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (typeof v === 'string' && v.startsWith('--') && i + 1 < values.length) {
+      const next = values[i + 1];
+      if (next !== undefined && next !== null && next !== '') {
+        out.push(v, next);
+      }
+      i += 1;
+    } else if (v !== undefined && v !== null && v !== '') {
+      out.push(v);
+    }
+  }
+  return out;
+}
+
+function redactArgv(argv) {
+  const out = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--socket-password' && i + 1 < argv.length) {
+      out.push('--socket-password', '[REDACTED]');
+      i += 1;
+      continue;
+    }
+    out.push(argv[i]);
+  }
+  return out;
 }
 
 function requireField(value, name) {
@@ -132,11 +162,13 @@ function buildCmuxInvoker(config = loadConfig()) {
     }
     argv.push(command, ...compactArgs(commandArgs));
 
+    const execOptions = {
+      env: process.env,
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: 30_000,
+    };
     try {
-      const { stdout, stderr } = await execFileAsync(config.cmuxBin, argv, {
-        env: process.env,
-        maxBuffer: 16 * 1024 * 1024,
-      });
+      const { stdout, stderr } = await execFileAsync(config.cmuxBin, argv, execOptions);
       const trimmedStdout = stdout.trim();
       const trimmedStderr = stderr.trim();
       return {
@@ -151,8 +183,9 @@ function buildCmuxInvoker(config = loadConfig()) {
       const stdout = typeof error.stdout === 'string' ? error.stdout.trim() : '';
       const stderr = typeof error.stderr === 'string' ? error.stderr.trim() : '';
       const suffix = [stderr, stdout].filter(Boolean).join('\n');
+      const safeArgv = redactArgv(argv);
       throw new Error(
-        `cmux ${argv.join(' ')} failed${suffix ? `\n${suffix}` : ''}`,
+        `cmux ${safeArgv.join(' ')} failed${suffix ? `\n${suffix}` : ''}`,
       );
     }
   };
@@ -854,6 +887,19 @@ export async function runHttpServer(config = loadConfig()) {
       }
     }
   });
+
+  const loopbackHosts = new Set(['127.0.0.1', '::1', 'localhost']);
+  const allowRemote = process.env.CMUX_MCP_ALLOW_REMOTE === '1';
+  const bindHost = config.httpHost;
+  const isLoopback =
+    loopbackHosts.has(String(bindHost ?? '').toLowerCase()) ||
+    bindHost === '::1';
+  if (!isLoopback && !allowRemote) {
+    throw new Error(
+      `Refusing to bind cmux-mcp HTTP to non-loopback host "${bindHost}". ` +
+        'Set CMUX_MCP_ALLOW_REMOTE=1 to allow remote binding.',
+    );
+  }
 
   const httpServer = createServer(app);
   await new Promise((resolve, reject) => {

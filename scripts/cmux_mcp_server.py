@@ -66,9 +66,19 @@ class CmuxMcpServer:
         content_length = headers.get("content-length")
         if content_length is None:
             raise McpProtocolError("Missing Content-Length header")
+        try:
+            content_length_value = int(content_length)
+        except ValueError as exc:
+            raise McpProtocolError(
+                f"Invalid Content-Length header: {content_length!r}"
+            ) from exc
+        if content_length_value < 0:
+            raise McpProtocolError(
+                f"Negative Content-Length not allowed: {content_length!r}"
+            )
 
-        body = sys.stdin.buffer.read(int(content_length))
-        if len(body) != int(content_length):
+        body = sys.stdin.buffer.read(content_length_value)
+        if len(body) != content_length_value:
             raise McpProtocolError("Unexpected EOF while reading MCP body")
 
         payload = json.loads(body.decode("utf-8"))
@@ -108,7 +118,13 @@ class CmuxMcpServer:
             if method == "initialize":
                 requested_version = params.get("protocolVersion")
                 if isinstance(requested_version, str) and requested_version:
-                    self._protocol_version = requested_version
+                    if requested_version != self._protocol_version:
+                        self._write_error(
+                            request_id,
+                            -32602,
+                            f"Unsupported protocolVersion: {requested_version}",
+                        )
+                        return
                 self._write_response(request_id, self._initialize_result())
                 return
 

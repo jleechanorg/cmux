@@ -8,7 +8,7 @@ Build a local MCP server for cmux, but keep it as a thin adapter over the existi
 
 This is justified because cmux already exposes most of the primitives an MCP host would need:
 
-1. `TerminalController` already implements a JSON v2 socket protocol with stable methods for `window.*`, `workspace.*`, `pane.*`, `surface.*`, and `browser.*` in [TerminalController.swift](/tmp/cmux-mcp-worktree/Sources/TerminalController.swift).
+1. `TerminalController` already implements a JSON v2 socket protocol with stable methods for `window.*`, `workspace.*`, `pane.*`, `surface.*`, and `browser.*` in [TerminalController.swift](../Sources/TerminalController.swift).
 2. `system.tree` and `system.identify` already provide the discovery and self-location data an agent needs to reason about windows, workspaces, panes, and surfaces.
 3. `TabManager`, `Workspace`, and `AppDelegate` already own the real mutations for selection, creation, moving, focusing, and cross-window routing, so an MCP server does not need to replicate that logic.
 
