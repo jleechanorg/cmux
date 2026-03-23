@@ -1,17 +1,41 @@
 import XCTest
 import Foundation
+import CoreGraphics
 
 final class BrowserPaneNavigationKeybindUITests: XCTestCase {
     private var dataPath = ""
     private var socketPath = ""
+    private var isPreLaunched = false
+    private var prelaunchPID: pid_t = 0
+
+    private static let prelaunchManifestPath = "/tmp/cmux-ui-test-browser-prelaunch.json"
 
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
-        dataPath = "/tmp/cmux-ui-test-goto-split-\(UUID().uuidString).json"
+
+        if let manifest = Self.loadPrelaunchManifest() {
+            isPreLaunched = true
+            prelaunchPID = pid_t(manifest.pid ?? 0)
+            dataPath = manifest.dataPath ?? "/tmp/cmux-ui-test-goto-split-\(UUID().uuidString).json"
+            socketPath = manifest.socketPath ?? "/tmp/cmux-ui-test-socket-\(UUID().uuidString).sock"
+        } else {
+            dataPath = "/tmp/cmux-ui-test-goto-split-\(UUID().uuidString).json"
+            socketPath = "/tmp/cmux-ui-test-socket-\(UUID().uuidString).sock"
+        }
         try? FileManager.default.removeItem(atPath: dataPath)
-        socketPath = "/tmp/cmux-ui-test-socket-\(UUID().uuidString).sock"
-        try? FileManager.default.removeItem(atPath: socketPath)
+    }
+
+    private struct BrowserPrelaunchManifest: Decodable {
+        let dataPath: String?
+        let socketPath: String?
+        let pid: Int?
+    }
+
+    private static func loadPrelaunchManifest() -> BrowserPrelaunchManifest? {
+        let url = URL(fileURLWithPath: prelaunchManifestPath)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(BrowserPrelaunchManifest.self, from: data)
     }
 
     func testCmdCtrlHMovesLeftWhenWebViewFocused() {
@@ -792,6 +816,67 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
         runFindFocusPersistenceScenario(route: .cmdOptionArrows, useAutofocusRacePage: true)
     }
 
+    func testCmdFFocusesBrowserFindFieldAfterCmdDCmdLNavigation() {
+        let app = XCUIApplication()
+        app.launchEnvironment["CMUX_SOCKET_PATH"] = socketPath
+        app.launchEnvironment["CMUX_UI_TEST_GOTO_SPLIT_RECORD_ONLY"] = "1"
+        app.launchEnvironment["CMUX_UI_TEST_GOTO_SPLIT_PATH"] = dataPath
+        launchAndEnsureForeground(app)
+
+        let window = app.windows.firstMatch
+        // On some CI runners the app accepts key events before XCUI exposes the window tree.
+        _ = window.waitForExistence(timeout: 2.0)
+
+        sendKeyEvent(app, key: "d", modifierFlags: [.command])
+        XCTAssertTrue(
+            waitForDataMatch(timeout: 6.0) { data in
+                guard data["lastSplitDirection"] == "right" else { return false }
+                guard let paneCountAfterSplit = Int(data["paneCountAfterSplit"] ?? "") else { return false }
+                return paneCountAfterSplit >= 2
+            },
+            "Expected Cmd+D to create a split before opening the browser. data=\(String(describing: loadData()))"
+        )
+
+        sendKeyEvent(app, key: "l", modifierFlags: [.command])
+
+        let omnibar = app.textFields["BrowserOmnibarTextField"].firstMatch
+        XCTAssertTrue(omnibar.waitForExistence(timeout: 8.0), "Expected browser omnibar after Cmd+L")
+
+        sendKeyEvent(app, key: "a", modifierFlags: [.command])
+        sendKeyEvent(app, key: XCUIKeyboardKey.delete.rawValue)
+        sendText(app, text: "example.com")
+        sendKeyEvent(app, key: XCUIKeyboardKey.return.rawValue)
+
+        XCTAssertTrue(
+            waitForOmnibarToContainExampleDomain(omnibar, timeout: 8.0),
+            "Expected browser navigation to example domain before opening find. value=\(String(describing: omnibar.value))"
+        )
+
+        sendKeyEvent(app, key: "f", modifierFlags: [.command])
+
+        let findField = app.textFields["BrowserFindSearchTextField"].firstMatch
+        XCTAssertTrue(findField.waitForExistence(timeout: 6.0), "Expected browser find field after Cmd+F")
+
+        let omnibarValueBeforeFindTyping = (omnibar.value as? String) ?? ""
+        sendText(app, text: "needle")
+
+        XCTAssertTrue(
+            waitForCondition(timeout: 4.0) {
+                ((findField.value as? String) ?? "") == "needle"
+            },
+            "Expected Cmd+F to focus browser find after Cmd+D, Cmd+L, and navigation. " +
+                "findValue=\(String(describing: findField.value)) omnibarValue=\(String(describing: omnibar.value))"
+        )
+        let omnibarValueAfterFindTyping = (omnibar.value as? String) ?? ""
+        XCTAssertFalse(
+            omnibarValueAfterFindTyping.contains("needle"),
+            "Expected typing after Cmd+F to stay out of the omnibar. " +
+                "omnibarValueBefore=\(omnibarValueBeforeFindTyping) " +
+                "omnibarValueAfter=\(String(describing: omnibar.value)) " +
+                "findValue=\(String(describing: findField.value))"
+        )
+    }
+
     private enum FindFocusRoute {
         case cmdOptionArrows
         case cmdCtrlLetters
@@ -925,40 +1010,23 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
     }
 
     private func waitForOmnibarToContainExampleDomain(_ omnibar: XCUIElement, timeout: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
+        waitForCondition(timeout: timeout) {
             let value = (omnibar.value as? String) ?? ""
-            if value.contains("example.com") || value.contains("example.org") {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            return value.contains("example.com") || value.contains("example.org")
         }
-        let value = (omnibar.value as? String) ?? ""
-        return value.contains("example.com") || value.contains("example.org")
     }
 
     private func waitForOmnibarToContain(_ omnibar: XCUIElement, value expectedSubstring: String, timeout: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
+        waitForCondition(timeout: timeout) {
             let value = (omnibar.value as? String) ?? ""
-            if value.contains(expectedSubstring) {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            return value.contains(expectedSubstring)
         }
-        let value = (omnibar.value as? String) ?? ""
-        return value.contains(expectedSubstring)
     }
 
     private func waitForElementToBecomeHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if element.exists && element.isHittable {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        waitForCondition(timeout: timeout) {
+            element.exists && element.isHittable
         }
-        return element.exists && element.isHittable
     }
 
     private var autofocusRacePageURL: String {
@@ -970,6 +1038,13 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
     }
 
     private func launchAndEnsureForeground(_ app: XCUIApplication, timeout: TimeInterval = 12.0) {
+        if isPreLaunched {
+            // App was pre-launched from the CI shell. Don't call launch() or
+            // activate() — both block ~60s on headless CI runners. The test
+            // uses CGEventPostToPid for keyboard input and XCUIApplication
+            // element queries (which work on background apps via accessibility).
+            return
+        }
         app.launch()
         XCTAssertTrue(
             ensureForegroundAfterLaunch(app, timeout: timeout),
@@ -989,31 +1064,17 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
     }
 
     private func waitForData(keys: [String], timeout: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let data = loadData(), keys.allSatisfy({ data[$0] != nil }) {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        waitForCondition(timeout: timeout) {
+            guard let data = self.loadData() else { return false }
+            return keys.allSatisfy { data[$0] != nil }
         }
-        if let data = loadData(), keys.allSatisfy({ data[$0] != nil }) {
-            return true
-        }
-        return false
     }
 
-    private func waitForDataMatch(timeout: TimeInterval, predicate: ([String: String]) -> Bool) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let data = loadData(), predicate(data) {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    private func waitForDataMatch(timeout: TimeInterval, predicate: @escaping ([String: String]) -> Bool) -> Bool {
+        waitForCondition(timeout: timeout) {
+            guard let data = self.loadData() else { return false }
+            return predicate(data)
         }
-        if let data = loadData(), predicate(data) {
-            return true
-        }
-        return false
     }
 
     private func waitForNonExistence(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
@@ -1027,5 +1088,89 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
             return nil
         }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: String]
+    }
+
+    private func waitForCondition(timeout: TimeInterval, predicate: @escaping () -> Bool) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in predicate() },
+            object: nil
+        )
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    // MARK: - CGEvent keyboard input for headless CI
+
+    // Maps single-character key strings to macOS virtual key codes.
+    private static let keyCodeMap: [String: CGKeyCode] = [
+        "a": 0x00, "s": 0x01, "d": 0x02, "f": 0x03, "h": 0x04,
+        "g": 0x05, "z": 0x06, "x": 0x07, "c": 0x08, "v": 0x09,
+        "b": 0x0B, "q": 0x0C, "w": 0x0D, "e": 0x0E, "r": 0x0F,
+        "y": 0x10, "t": 0x11, "1": 0x12, "2": 0x13, "3": 0x14,
+        "4": 0x15, "6": 0x16, "5": 0x17, "9": 0x19, "7": 0x1A,
+        "8": 0x1C, "0": 0x1D, "o": 0x1F, "u": 0x20, "i": 0x22,
+        "p": 0x23, "l": 0x25, "j": 0x26, "k": 0x28, "n": 0x2D,
+        "m": 0x2E, ".": 0x2F, "/": 0x2C, ":": 0x29,
+    ]
+
+    private func sendKeyEvent(_ app: XCUIApplication, key: String, modifierFlags: XCUIElement.KeyModifierFlags = []) {
+        if isPreLaunched && prelaunchPID > 0 {
+            postCGKeyEvent(key: key, modifierFlags: modifierFlags)
+        } else {
+            app.typeKey(key, modifierFlags: modifierFlags)
+        }
+    }
+
+    private func sendText(_ app: XCUIApplication, text: String) {
+        if isPreLaunched && prelaunchPID > 0 {
+            postCGText(text)
+        } else {
+            app.typeText(text)
+        }
+    }
+
+    private func postCGKeyEvent(key: String, modifierFlags: XCUIElement.KeyModifierFlags) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        var flags: CGEventFlags = []
+        if modifierFlags.contains(.command) { flags.insert(.maskCommand) }
+        if modifierFlags.contains(.control) { flags.insert(.maskControl) }
+        if modifierFlags.contains(.option) { flags.insert(.maskAlternate) }
+        if modifierFlags.contains(.shift) { flags.insert(.maskShift) }
+
+        let keyCode: CGKeyCode
+        if key == XCUIKeyboardKey.delete.rawValue {
+            keyCode = 0x33
+        } else if key == XCUIKeyboardKey.return.rawValue {
+            keyCode = 0x24
+        } else if let code = Self.keyCodeMap[key.lowercased()] {
+            keyCode = code
+        } else {
+            // Unknown key — post as unicode character
+            postCGText(key)
+            return
+        }
+
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else { return }
+        keyDown.flags = flags
+        keyUp.flags = flags
+        keyDown.postToPid(prelaunchPID)
+        usleep(10_000)
+        keyUp.postToPid(prelaunchPID)
+        usleep(10_000)
+    }
+
+    private func postCGText(_ text: String) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        for char in text {
+            let chars = Array(String(char).utf16)
+            guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+                  let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else { continue }
+            keyDown.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: chars)
+            keyUp.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: chars)
+            keyDown.postToPid(prelaunchPID)
+            usleep(5_000)
+            keyUp.postToPid(prelaunchPID)
+            usleep(5_000)
+        }
     }
 }
