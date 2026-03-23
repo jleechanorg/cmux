@@ -1153,9 +1153,9 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
               let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else { return }
         keyDown.flags = flags
         keyUp.flags = flags
-        CGEventPostToPid(prelaunchPID, keyDown)
+        keyDown.postToPid(prelaunchPID)
         usleep(10_000)
-        CGEventPostToPid(prelaunchPID, keyUp)
+        keyUp.postToPid(prelaunchPID)
         usleep(10_000)
     }
 
@@ -1167,9 +1167,9 @@ final class BrowserPaneNavigationKeybindUITests: XCTestCase {
                   let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else { continue }
             keyDown.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: chars)
             keyUp.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: chars)
-            CGEventPostToPid(prelaunchPID, keyDown)
+            keyDown.postToPid(prelaunchPID)
             usleep(5_000)
-            CGEventPostToPid(prelaunchPID, keyUp)
+            keyUp.postToPid(prelaunchPID)
             usleep(5_000)
         }
     }
