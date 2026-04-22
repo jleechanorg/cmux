@@ -8831,10 +8831,8 @@ final class Workspace: Identifiable, ObservableObject {
         let inheritedConfig = inheritedTerminalConfig(preferredPanelId: panelId, inPane: paneId)
         let remoteTerminalStartupCommand = remoteTerminalStartupCommand()
 
-        // Inherit working directory: prefer the source panel's reported cwd,
-        // then its requested startup cwd if shell integration has not reported
-        // back yet, and finally fall back to the workspace's current directory.
-        let splitWorkingDirectory: String? = {
+        // Sidebar-tracked cwd (OSC / shell integration + startup request + workspace hint).
+        let sidebarSplitWorkingDirectory: String? = {
             if let panelDirectory = panelDirectories[panelId]?.trimmingCharacters(in: .whitespacesAndNewlines),
                !panelDirectory.isEmpty {
                 return panelDirectory
@@ -8848,9 +8846,24 @@ final class Workspace: Identifiable, ObservableObject {
             let workspaceDirectory = currentDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
             return workspaceDirectory.isEmpty ? nil : workspaceDirectory
         }()
+
+        let ghosttyInheritedWd = inheritedConfig?
+            .workingDirectory?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let ghosttyInheritedNonEmpty: String? = {
+            guard let ghosttyInheritedWd, !ghosttyInheritedWd.isEmpty else { return nil }
+            return ghosttyInheritedWd
+        }()
+
+        // Prefer libghostty's inherited working directory (same source as standalone Ghostty
+        // when splitting). cmux's explicit TerminalSurface `workingDirectory` wins over
+        // configTemplate in TerminalSurface.createSurface; a stale sidebar cache or workspace
+        // `currentDirectory` must not clobber the live cwd Ghostty already tracks on the source
+        // surface when shell integration events lag or do not run.
+        let splitWorkingDirectory: String? = ghosttyInheritedNonEmpty ?? sidebarSplitWorkingDirectory
 #if DEBUG
         dlog(
-            "split.cwd panelId=\(panelId.uuidString.prefix(5)) panelDir=\(panelDirectories[panelId] ?? "nil") requestedDir=\(terminalPanel(for: panelId)?.requestedWorkingDirectory ?? "nil") currentDir=\(currentDirectory) resolved=\(splitWorkingDirectory ?? "nil")"
+            "split.cwd panelId=\(panelId.uuidString.prefix(5)) panelDir=\(panelDirectories[panelId] ?? "nil") requestedDir=\(terminalPanel(for: panelId)?.requestedWorkingDirectory ?? "nil") currentDir=\(currentDirectory) inherited=\(ghosttyInheritedNonEmpty ?? "nil") resolved=\(splitWorkingDirectory ?? "nil")"
         )
 #endif
 
