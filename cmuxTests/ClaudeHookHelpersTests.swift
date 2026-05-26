@@ -288,6 +288,16 @@ final class ClaudeHookHelpersTests: XCTestCase {
         XCTAssertTrue(summary.body.contains("<email>"))
     }
 
+    func testSummarizeJSONPathRedactsStringifiedError() {
+        let json = """
+        {"hook_event_name":"Notification","error":{"code":-1,"message":"Failed at /Users/secret/project"},"notification_type":"error"}
+        """
+        let summary = ClaudeHookHelpers.summarizeNotification(rawInput: json)
+        XCTAssertFalse(summary.body.contains("/Users/secret/project"),
+                       "Paths inside stringified error objects must be redacted before classification")
+        XCTAssertTrue(summary.body.contains("<path>"))
+    }
+
     // MARK: - firstStringOrStringified
 
     func testFirstStringOrStringifiedString() {
@@ -316,8 +326,8 @@ final class ClaudeHookHelpersTests: XCTestCase {
         """
         let summary = ClaudeHookHelpers.summarizeNotification(rawInput: json)
         XCTAssertEqual(summary.subtitle, "Error")
-        XCTAssertTrue(summary.body.contains("timeout") || summary.body.contains("code"),
-                       "Non-string error payload should be stringified and included")
+        XCTAssertTrue(summary.body.contains("timeout") && summary.body.contains("code"),
+                       "Non-string error payload should be fully stringified — both 'message' and 'code' fields must appear")
     }
 
     // MARK: - Completed classification with "complete" prefix

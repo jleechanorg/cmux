@@ -20133,7 +20133,7 @@ struct CMUXCLI {
 
         case "notification", "notify":
             telemetry.breadcrumb("claude-hook.notification")
-            var summary = summarizeClaudeHookNotification(rawInput: rawInput)
+            var summary = summarizeClaudeHookNotification(parsedInput: parsedInput)
 
             let mappedSession = parsedInput.sessionId.flatMap { try? sessionStore.lookup(sessionId: $0) }
             let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
@@ -22507,8 +22507,31 @@ struct CMUXCLI {
         return nil
     }
 
-    private func summarizeClaudeHookNotification(rawInput: String) -> (subtitle: String, body: String) {
-        ClaudeHookHelpers.summarizeNotification(rawInput: rawInput)
+    private func summarizeClaudeHookNotification(parsedInput: ClaudeHookParsedInput) -> (subtitle: String, body: String) {
+        guard let object = parsedInput.object else {
+            if let fallback = parsedInput.rawFallback, !fallback.isEmpty {
+                return classifyClaudeNotification(signal: fallback, message: fallback)
+            }
+            return ("Waiting", "Claude is waiting for your input")
+        }
+
+        let nested = (object["notification"] as? [String: Any]) ?? (object["data"] as? [String: Any]) ?? [:]
+        let signalParts = [
+            firstString(in: object, keys: ["event", "event_name", "hook_event_name", "type", "kind"]),
+            firstString(in: object, keys: ["notification_type", "matcher", "reason"]),
+            firstString(in: nested, keys: ["type", "kind", "reason"])
+        ]
+        let messageCandidates = [
+            firstString(in: object, keys: ["message", "body", "text", "prompt", "error", "description"]),
+            firstString(in: nested, keys: ["message", "body", "text", "prompt", "error", "description"])
+        ]
+        let message = messageCandidates.compactMap { $0 }.first ?? "Claude needs your input"
+        let normalizedMessage = normalizedSingleLine(message)
+        let signal = signalParts.compactMap { $0 }.joined(separator: " ")
+        var classified = classifyClaudeNotification(signal: signal, message: normalizedMessage)
+
+        classified.body = truncate(classified.body, maxLength: 180)
+        return classified
     }
 
     private func summarizeAgentHookNotification(
@@ -22918,19 +22941,32 @@ struct CMUXCLI {
     }
 
     private func firstString(in object: [String: Any], keys: [String]) -> String? {
-        ClaudeHookHelpers.firstString(in: object, keys: keys)
+        for key in keys {
+            guard let value = object[key] else { continue }
+            if let string = value as? String {
+                let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+        }
+        return nil
     }
 
     private func normalizedSingleLine(_ value: String) -> String {
-        ClaudeHookHelpers.normalizedSingleLine(value)
+        let collapsed = value.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return collapsed.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func truncate(_ value: String, maxLength: Int) -> String {
-        ClaudeHookHelpers.truncate(value, maxLength: maxLength)
+        guard value.count > maxLength else { return value }
+        let index = value.index(value.startIndex, offsetBy: max(0, maxLength - 1))
+        return String(value[..<index]) + "…"
     }
 
     private func sanitizeNotificationField(_ value: String) -> String {
-        ClaudeHookHelpers.sanitizeNotificationField(value)
+        return normalizedSingleLine(value)
+            .replacingOccurrences(of: "|", with: "¦")
     }
 
     private func notificationPayload(title: String, subtitle: String, body: String) -> String {
@@ -22938,7 +22974,19 @@ struct CMUXCLI {
     }
 
     private func redactClaudeSensitiveSpans(_ value: String) -> String {
-        ClaudeHookHelpers.redactClaudeSensitiveSpans(value)
+        let patterns: [(pattern: String, replacement: String)] = [
+            (#"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#, "<email>"),
+            (#"(?:~|/)[^\s\"']+"#, "<path>"),
+            (#"\b(?:sk|rk|sess|token|key|secret|api[_-]?key)[A-Za-z0-9._:-]{8,}\b"#, "<token>"),
+            (#"\b[A-Za-z0-9_-]{24,}\b"#, "<token>")
+        ]
+        return patterns.reduce(value) { partial, entry in
+            partial.replacingOccurrences(
+                of: entry.pattern,
+                with: entry.replacement,
+                options: [.regularExpression, .caseInsensitive]
+            )
+        }
     }
 
     private func mergedNodeOptions(existing: String?, restoreModulePath: String) -> String {
@@ -29706,6 +29754,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             return false
         }
     }
+
 
     private func versionSummary() -> String {
         let info = resolvedVersionInfo()
