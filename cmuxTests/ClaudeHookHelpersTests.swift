@@ -364,4 +364,30 @@ final class ClaudeHookHelpersTests: XCTestCase {
         XCTAssertTrue(summary.body.hasPrefix("Build timeout"),
                        "Plain message should take priority over stringified error object")
     }
+
+    // MARK: - Prompt not classified as Waiting
+
+    func testClassifyPromptNotWaiting() {
+        let result = ClaudeHookHelpers.classifyNotification(signal: "attention-prompt", message: "Needs response")
+        XCTAssertEqual(result.subtitle, "Attention")
+        XCTAssertNotEqual(result.subtitle, "Waiting")
+    }
+
+    // MARK: - sanitizeNotificationField does not truncate
+
+    func testSanitizeNotificationFieldNoTruncation() {
+        let long = String(repeating: "abc ", count: 100)
+        let result = ClaudeHookHelpers.sanitizeNotificationField(long)
+        XCTAssertTrue(result.count > 180, "sanitizeNotificationField should not truncate — that is summarize's job")
+    }
+
+    // MARK: - Nested session ID appended to body
+
+    func testSummarizeNestedSessionIdAppended() {
+        let json = """
+        {"notification":{"session_id":"nested-sess"},"message":"Hello"}
+        """
+        let summary = ClaudeHookHelpers.summarizeNotification(rawInput: json)
+        XCTAssertTrue(summary.body.contains("[nested-s]"), "Nested session ID should be extracted and appended")
+    }
 }

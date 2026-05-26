@@ -61,7 +61,7 @@ enum ClaudeHookHelpers {
             let body = message.isEmpty ? "Claude completed" : message
             return ("Completed", body)
         }
-        if lower.contains("idle") || lower.contains("wait") || lower.contains("input") || lower.contains("prompt") {
+        if lower.contains("idle") || lower.contains("wait") || lower.contains("input") {
             let body = message.isEmpty ? "Claude is waiting for your input" : message
             return ("Waiting", body)
         }
@@ -98,7 +98,7 @@ enum ClaudeHookHelpers {
             firstString(in: nested, keys: ["message", "body", "text", "prompt", "description"]),
             firstStringOrStringified(in: nested, keys: ["error", "codex_error_info", "codexErrorInfo", "additional_details", "additionalDetails"])
         ]
-        let session = firstString(in: object, keys: ["session_id", "sessionId"])
+        let session = extractSessionId(from: object)
         let message = messageCandidates.compactMap { $0 }.first ?? "Claude needs your input"
         let dedupedMessage = dedupeBranchContextLines(message)
         let normalizedMessage = normalizedSingleLine(dedupedMessage)
@@ -165,9 +165,8 @@ enum ClaudeHookHelpers {
     }
 
     static func sanitizeNotificationField(_ value: String) -> String {
-        let normalized = normalizedSingleLine(value)
+        return normalizedSingleLine(value)
             .replacingOccurrences(of: "|", with: "¦")
-        return truncate(normalized, maxLength: 180)
     }
 
     static func dedupeBranchContextLines(_ value: String) -> String {
