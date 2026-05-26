@@ -20133,7 +20133,7 @@ struct CMUXCLI {
 
         case "notification", "notify":
             telemetry.breadcrumb("claude-hook.notification")
-            var summary = summarizeClaudeHookNotification(parsedInput: parsedInput)
+            var summary = summarizeClaudeHookNotification(rawInput: rawInput)
 
             let mappedSession = parsedInput.sessionId.flatMap { try? sessionStore.lookup(sessionId: $0) }
             let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
