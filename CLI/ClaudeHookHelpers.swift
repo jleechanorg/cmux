@@ -56,7 +56,8 @@ enum ClaudeHookHelpers {
             let body = message.isEmpty ? "Claude reported an error" : message
             return ("Error", body)
         }
-        if lower.contains("complet") || lower.contains("finish") || lower.contains("done") || lower.contains("success") {
+        if (lower.contains("complet") || lower.contains("finish") || lower.contains("done") || lower.contains("success"))
+            && !lower.contains("incomplete") && !lower.contains("unsuccessful") && !lower.contains("unfinished") {
             let body = message.isEmpty ? "Claude completed" : message
             return ("Completed", body)
         }
@@ -92,10 +93,10 @@ enum ClaudeHookHelpers {
             firstString(in: nested, keys: ["type", "kind", "reason"])
         ]
         let messageCandidates = [
-            firstStringOrStringified(in: object, keys: ["error", "codex_error_info", "codexErrorInfo", "additional_details", "additionalDetails"]),
             firstString(in: object, keys: ["message", "body", "text", "prompt", "description"]),
-            firstStringOrStringified(in: nested, keys: ["error", "codex_error_info", "codexErrorInfo", "additional_details", "additionalDetails"]),
-            firstString(in: nested, keys: ["message", "body", "text", "prompt", "description"])
+            firstStringOrStringified(in: object, keys: ["error", "codex_error_info", "codexErrorInfo", "additional_details", "additionalDetails"]),
+            firstString(in: nested, keys: ["message", "body", "text", "prompt", "description"]),
+            firstStringOrStringified(in: nested, keys: ["error", "codex_error_info", "codexErrorInfo", "additional_details", "additionalDetails"])
         ]
         let session = firstString(in: object, keys: ["session_id", "sessionId"])
         let message = messageCandidates.compactMap { $0 }.first ?? "Claude needs your input"

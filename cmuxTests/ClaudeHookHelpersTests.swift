@@ -327,4 +327,41 @@ final class ClaudeHookHelpersTests: XCTestCase {
         XCTAssertEqual(result.subtitle, "Completed")
         XCTAssertEqual(result.body, "Task finished successfully")
     }
+
+    // MARK: - Completed negation (substring false positives)
+
+    func testClassifyIncompleteNotCompleted() {
+        let result = ClaudeHookHelpers.classifyNotification(signal: "incomplete", message: "Build incomplete")
+        XCTAssertNotEqual(result.subtitle, "Completed")
+        XCTAssertEqual(result.subtitle, "Attention")
+    }
+
+    func testClassifyUnsuccessfulNotCompleted() {
+        let result = ClaudeHookHelpers.classifyNotification(signal: "unsuccessful", message: "Attempt was unsuccessful")
+        XCTAssertNotEqual(result.subtitle, "Completed")
+        XCTAssertEqual(result.subtitle, "Attention")
+    }
+
+    func testClassifyUnfinishedNotCompleted() {
+        let result = ClaudeHookHelpers.classifyNotification(signal: "unfinished", message: "Work unfinished")
+        XCTAssertNotEqual(result.subtitle, "Completed")
+        XCTAssertEqual(result.subtitle, "Attention")
+    }
+
+    func testClassifyFinishingUpNotCompleted() {
+        let result = ClaudeHookHelpers.classifyNotification(signal: "status", message: "Finishing up, please wait")
+        XCTAssertNotEqual(result.subtitle, "Completed")
+        XCTAssertEqual(result.subtitle, "Waiting")
+    }
+
+    // MARK: - Message priority over stringified error objects
+
+    func testSummarizePrefersPlainMessageOverErrorObject() {
+        let json = """
+        {"message":"Build timeout","error":{"code":-1,"msg":"timeout"},"notification_type":"error"}
+        """
+        let summary = ClaudeHookHelpers.summarizeNotification(rawInput: json)
+        XCTAssertTrue(summary.body.hasPrefix("Build timeout"),
+                       "Plain message should take priority over stringified error object")
+    }
 }
