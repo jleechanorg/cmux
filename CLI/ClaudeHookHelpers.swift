@@ -56,6 +56,10 @@ enum ClaudeHookHelpers {
             let body = message.isEmpty ? "Claude reported an error" : message
             return ("Error", body)
         }
+        if lower.contains("complet") || lower.contains("finish") || lower.contains("done") || lower.contains("success") {
+            let body = message.isEmpty ? "Claude completed" : message
+            return ("Completed", body)
+        }
         if lower.contains("idle") || lower.contains("wait") || lower.contains("input") || lower.contains("prompt") {
             let body = message.isEmpty ? "Claude is waiting for your input" : message
             return ("Waiting", body)
@@ -76,7 +80,8 @@ enum ClaudeHookHelpers {
         guard let data = trimmed.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data, options: []),
               let object = json as? [String: Any] else {
-            let fallback = truncate(normalizedSingleLine(trimmed), maxLength: 180)
+            let redacted = redactClaudeSensitiveSpans(trimmed)
+            let fallback = truncate(normalizedSingleLine(redacted), maxLength: 180)
             return classifyNotification(signal: fallback, message: fallback)
         }
 
@@ -87,8 +92,10 @@ enum ClaudeHookHelpers {
             firstString(in: nested, keys: ["type", "kind", "reason"])
         ]
         let messageCandidates = [
-            firstString(in: object, keys: ["message", "body", "text", "prompt", "error", "description"]),
-            firstString(in: nested, keys: ["message", "body", "text", "prompt", "error", "description"])
+            firstStringOrStringified(in: object, keys: ["error", "codex_error_info", "codexErrorInfo", "additional_details", "additionalDetails"]),
+            firstString(in: object, keys: ["message", "body", "text", "prompt", "description"]),
+            firstStringOrStringified(in: nested, keys: ["error", "codex_error_info", "codexErrorInfo", "additional_details", "additionalDetails"]),
+            firstString(in: nested, keys: ["message", "body", "text", "prompt", "description"])
         ]
         let session = firstString(in: object, keys: ["session_id", "sessionId"])
         let message = messageCandidates.compactMap { $0 }.first ?? "Claude needs your input"
@@ -118,6 +125,28 @@ enum ClaudeHookHelpers {
                 if !trimmed.isEmpty {
                     return trimmed
                 }
+            }
+        }
+        return nil
+    }
+
+    static func firstStringOrStringified(in object: [String: Any], keys: [String]) -> String? {
+        for key in keys {
+            guard let value = object[key] else { continue }
+            if let string = value as? String {
+                let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+            guard JSONSerialization.isValidJSONObject(value),
+                  let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
+                  let string = String(data: data, encoding: .utf8) else {
+                continue
+            }
+            let normalized = normalizedSingleLine(string)
+            if !normalized.isEmpty {
+                return truncate(normalized, maxLength: 180)
             }
         }
         return nil
@@ -159,6 +188,22 @@ enum ClaudeHookHelpers {
     }
 
     // MARK: - Private
+
+    static func redactClaudeSensitiveSpans(_ value: String) -> String {
+        let patterns: [(pattern: String, replacement: String)] = [
+            (#"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#, "<email>"),
+            (#"(?:~|/)[^\s\"']+"#, "<path>"),
+            (#"\b(?:sk|rk|sess|token|key|secret|api[_-]?key)[A-Za-z0-9._:-]{8,}\b"#, "<token>"),
+            (#"\b[A-Za-z0-9_-]{24,}\b"#, "<token>")
+        ]
+        return patterns.reduce(value) { partial, entry in
+            partial.replacingOccurrences(
+                of: entry.pattern,
+                with: entry.replacement,
+                options: [.regularExpression, .caseInsensitive]
+            )
+        }
+    }
 
     private static func branchContextPath(from line: String) -> String? {
         let parts = line.split(separator: "•", maxSplits: 1, omittingEmptySubsequences: false)

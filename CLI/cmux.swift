@@ -22938,19 +22938,7 @@ struct CMUXCLI {
     }
 
     private func redactClaudeSensitiveSpans(_ value: String) -> String {
-        let patterns: [(pattern: String, replacement: String)] = [
-            (#"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#, "<email>"),
-            (#"(?:~|/)[^\s\"']+"#, "<path>"),
-            (#"\b(?:sk|rk|sess|token|key|secret|api[_-]?key)[A-Za-z0-9._:-]{8,}\b"#, "<token>"),
-            (#"\b[A-Za-z0-9_-]{24,}\b"#, "<token>")
-        ]
-        return patterns.reduce(value) { partial, entry in
-            partial.replacingOccurrences(
-                of: entry.pattern,
-                with: entry.replacement,
-                options: [.regularExpression, .caseInsensitive]
-            )
-        }
+        ClaudeHookHelpers.redactClaudeSensitiveSpans(value)
     }
 
     private func mergedNodeOptions(existing: String?, restoreModulePath: String) -> String {
@@ -29718,7 +29706,6 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             return false
         }
     }
-
 
     private func versionSummary() -> String {
         let info = resolvedVersionInfo()

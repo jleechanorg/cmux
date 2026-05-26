@@ -253,4 +253,78 @@ final class ClaudeHookHelpersTests: XCTestCase {
             "Lines without branch•path format should pass through unchanged"
         )
     }
+
+    // MARK: - Redaction
+
+    func testRedactEmail() {
+        let result = ClaudeHookHelpers.redactClaudeSensitiveSpans("Contact user@example.com for details")
+        XCTAssertTrue(result.contains("<email>"))
+        XCTAssertFalse(result.contains("user@example.com"))
+    }
+
+    func testRedactPath() {
+        let result = ClaudeHookHelpers.redactClaudeSensitiveSpans("Error in /Users/secret/project")
+        XCTAssertTrue(result.contains("<path>"))
+        XCTAssertFalse(result.contains("/Users/secret/project"))
+    }
+
+    func testRedactToken() {
+        let result = ClaudeHookHelpers.redactClaudeSensitiveSpans("Key: sk-abc1234567890abcdefg")
+        XCTAssertTrue(result.contains("<token>"))
+        XCTAssertFalse(result.contains("sk-abc1234567890abcdefg"))
+    }
+
+    // MARK: - summarizeNotification redaction
+
+    func testSummarizePlainTextFallbackRedactsPaths() {
+        let summary = ClaudeHookHelpers.summarizeNotification(rawInput: "/Users/secret/project crashed")
+        XCTAssertFalse(summary.body.contains("/Users/secret/project"))
+        XCTAssertTrue(summary.body.contains("<path>"))
+    }
+
+    func testSummarizePlainTextFallbackRedactsEmails() {
+        let summary = ClaudeHookHelpers.summarizeNotification(rawInput: "admin@evil.com sent a message")
+        XCTAssertFalse(summary.body.contains("admin@evil.com"))
+        XCTAssertTrue(summary.body.contains("<email>"))
+    }
+
+    // MARK: - firstStringOrStringified
+
+    func testFirstStringOrStringifiedString() {
+        let obj: [String: Any] = ["error": "something broke"]
+        XCTAssertEqual(ClaudeHookHelpers.firstStringOrStringified(in: obj, keys: ["error"]), "something broke")
+    }
+
+    func testFirstStringOrStringifiedObject() {
+        let obj: [String: Any] = ["error": ["code": 42, "msg": "fail"]]
+        let result = ClaudeHookHelpers.firstStringOrStringified(in: obj, keys: ["error"])
+        XCTAssertNotNil(result)
+        XCTAssertTrue(result!.contains("\"code\""))
+        XCTAssertTrue(result!.contains("\"msg\""))
+    }
+
+    func testFirstStringOrStringifiedSkipsEmpty() {
+        let obj: [String: Any] = ["error": "  ", "detail": "real"]
+        XCTAssertEqual(ClaudeHookHelpers.firstStringOrStringified(in: obj, keys: ["error", "detail"]), "real")
+    }
+
+    // MARK: - Non-string error payloads
+
+    func testSummarizeNonStringErrorPayload() {
+        let json = """
+        {"hook_event_name":"Notification","error":{"code":-1,"message":"timeout"},"notification_type":"error"}
+        """
+        let summary = ClaudeHookHelpers.summarizeNotification(rawInput: json)
+        XCTAssertEqual(summary.subtitle, "Error")
+        XCTAssertTrue(summary.body.contains("timeout") || summary.body.contains("code"),
+                       "Non-string error payload should be stringified and included")
+    }
+
+    // MARK: - Completed classification with "complete" prefix
+
+    func testClassifyCompletedComplete() {
+        let result = ClaudeHookHelpers.classifyNotification(signal: "complete", message: "Task finished successfully")
+        XCTAssertEqual(result.subtitle, "Completed")
+        XCTAssertEqual(result.body, "Task finished successfully")
+    }
 }
