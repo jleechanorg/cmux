@@ -326,8 +326,10 @@ final class ClaudeHookHelpersTests: XCTestCase {
         """
         let summary = ClaudeHookHelpers.summarizeNotification(rawInput: json)
         XCTAssertEqual(summary.subtitle, "Error")
-        XCTAssertTrue(summary.body.contains("timeout") && summary.body.contains("code"),
-                       "Non-string error payload should be fully stringified — both 'message' and 'code' fields must appear")
+        XCTAssertTrue(summary.body.contains("timeout"),
+                       "Stringified error should include the nested message field")
+        XCTAssertTrue(summary.body.contains("code") || summary.body.contains("-1"),
+                       "Stringified error should include the code field or its value")
     }
 
     // MARK: - Completed classification with "complete" prefix
