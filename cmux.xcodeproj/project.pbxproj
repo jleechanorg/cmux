@@ -431,6 +431,7 @@
 		B9000054A1B2C3D4E5F60719 /* CMUXCLI+Process.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9000055A1B2C3D4E5F60719 /* CMUXCLI+Process.swift */; };
 		B900006FA1B2C3D4E5F60719 /* ClaudeHookHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9000070A1B2C3D4E5F60719 /* ClaudeHookHelpers.swift */; };
 		B9000071A1B2C3D4E5F60719 /* ClaudeHookHelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9000072A1B2C3D4E5F60719 /* ClaudeHookHelpersTests.swift */; };
+		B9000073A1B2C3D4E5F60719 /* ClaudeHookHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9000070A1B2C3D4E5F60719 /* ClaudeHookHelpers.swift */; };
 		B9000012A1B2C3D4E5F60719 /* AutomationSocketUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9000011A1B2C3D4E5F60719 /* AutomationSocketUITests.swift */; };
 		FEED0000000000000000F009 /* FeedSidebarUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0000000000000000F008 /* FeedSidebarUITests.swift */; };
 		B9000014A1B2C3D4E5F60719 /* JumpToUnreadUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9000013A1B2C3D4E5F60719 /* JumpToUnreadUITests.swift */; };
@@ -1745,6 +1746,7 @@
 				FE002001 /* FileExplorerRootResolverTests.swift */,
 				FE002002 /* FileExplorerStoreTests.swift */,
 				FE002003 /* FileSearchRipgrepParserTests.swift */,
+				B9000070A1B2C3D4E5F60719 /* ClaudeHookHelpers.swift */,
 				B9000072A1B2C3D4E5F60719 /* ClaudeHookHelpersTests.swift */,
 			);
 			path = cmuxTests;
@@ -2565,6 +2567,7 @@
 				FE002101 /* FileExplorerRootResolverTests.swift in Sources */,
 				FE002102 /* FileExplorerStoreTests.swift in Sources */,
 				FE002103 /* FileSearchRipgrepParserTests.swift in Sources */,
+				B9000073A1B2C3D4E5F60719 /* ClaudeHookHelpers.swift in Sources */,
 				B9000071A1B2C3D4E5F60719 /* ClaudeHookHelpersTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
