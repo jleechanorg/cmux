@@ -5,6 +5,8 @@
 import Foundation
 
 /// Parsed representation of the JSON stdin that Claude Code sends to hook commands.
+/// Only used in tests — production goes through `summarizeNotification` directly.
+#if DEBUG
 struct ClaudeHookParsedNotification {
     let rawInput: String
     let object: [String: Any]?
@@ -13,13 +15,15 @@ struct ClaudeHookParsedNotification {
     let transcriptPath: String?
     let notificationType: String?
 }
+#endif
 
 // MARK: - Notification Helpers
 
 enum ClaudeHookHelpers {
 
-    // MARK: Parse
+    // MARK: Parse (test-only)
 
+    #if DEBUG
     /// Parse raw JSON stdin from a Claude Code hook invocation into structured fields.
     static func parseInput(_ rawInput: String) -> ClaudeHookParsedNotification {
         let trimmed = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -42,6 +46,7 @@ enum ClaudeHookHelpers {
             cwd: cwd, transcriptPath: transcriptPath, notificationType: notificationType
         )
     }
+    #endif
 
     // MARK: Classify
 
