@@ -1746,7 +1746,6 @@
 				FE002001 /* FileExplorerRootResolverTests.swift */,
 				FE002002 /* FileExplorerStoreTests.swift */,
 				FE002003 /* FileSearchRipgrepParserTests.swift */,
-				B9000074A1B2C3D4E5F60719 /* ClaudeHookHelpers.swift */,
 				B9000072A1B2C3D4E5F60719 /* ClaudeHookHelpersTests.swift */,
 			);
 			path = cmuxTests;

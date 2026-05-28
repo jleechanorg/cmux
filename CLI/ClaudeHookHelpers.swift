@@ -105,10 +105,10 @@ enum ClaudeHookHelpers {
         ]
         let session = extractSessionId(from: object)
         let message = messageCandidates.compactMap { $0 }.first ?? "Claude needs your input"
-        let dedupedMessage = dedupeBranchContextLines(message)
-        let redactedMessage = redactClaudeSensitiveSpans(normalizedSingleLine(dedupedMessage))
+        let redactedMessage = redactClaudeSensitiveSpans(normalizedSingleLine(message))
+        let dedupedMessage = dedupeBranchContextLines(redactedMessage)
         let signal = signalParts.compactMap { $0 }.joined(separator: " ")
-        var classified = classifyNotification(signal: signal, message: redactedMessage)
+        var classified = classifyNotification(signal: signal, message: dedupedMessage)
 
         if let session, !session.isEmpty {
             let shortSession = String(session.prefix(8))
