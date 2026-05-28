@@ -20133,7 +20133,7 @@ struct CMUXCLI {
 
         case "notification", "notify":
             telemetry.breadcrumb("claude-hook.notification")
-            var summary = summarizeClaudeHookNotification(parsedInput: parsedInput)
+            var summary = ClaudeHookHelpers.summarizeNotification(rawInput: rawInput)
 
             let mappedSession = parsedInput.sessionId.flatMap { try? sessionStore.lookup(sessionId: $0) }
             let workspaceId = try resolvePreferredWorkspaceIdForClaudeHook(
@@ -22887,6 +22887,10 @@ struct CMUXCLI {
         return ("Attention", "Claude needs your attention")
     }
 
+    private func dedupeBranchContextLines(_ value: String) -> String {
+        ClaudeHookHelpers.dedupeBranchContextLines(value)
+    }
+
     private func containsCompletionCue(_ lowercasedText: String) -> Bool {
         notificationCueTokens(lowercasedText).contains { token in
             token == "done"
@@ -22935,6 +22939,7 @@ struct CMUXCLI {
     private func notificationCueTokens(_ lowercasedText: String) -> [Substring] {
         lowercasedText.split { !$0.isLetter && !$0.isNumber }
     }
+
 
     private func firstString(in object: [String: Any], keys: [String]) -> String? {
         for key in keys {
