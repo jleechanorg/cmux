@@ -146,8 +146,9 @@ enum ClaudeHookHelpers {
                 continue
             }
             let normalized = normalizedSingleLine(string)
-            if !normalized.isEmpty {
-                return truncate(normalized, maxLength: 180)
+            let redacted = redactClaudeSensitiveSpans(normalized)
+            if !redacted.isEmpty {
+                return truncate(redacted, maxLength: 180)
             }
         }
         return nil
