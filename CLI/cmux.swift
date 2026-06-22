@@ -32874,7 +32874,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         // Outside a cmux terminal (no CMUX_SURFACE_ID) → silently no-op.
         // Also matches the graceful-fallback pattern of the other hooks.
         guard ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"]?.isEmpty == false else {
-            print("{}")
+            print(Self.nonActionableFeedDecision(source: source))
             return
         }
 
@@ -32884,7 +32884,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         guard !stdinData.isEmpty,
               let stdinObj = try? JSONSerialization.jsonObject(with: stdinData) as? [String: Any]
         else {
-            print("{}")
+            print(Self.nonActionableFeedDecision(source: source))
             return
         }
 
@@ -32915,7 +32915,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             isActionable: isActionable,
             env: env
         ) {
-            print("{}")
+            print(Self.nonActionableFeedDecision(source: source))
             return
         }
 
