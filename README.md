@@ -308,7 +308,7 @@ working directories, scrollback, and browser history.
 If you need to reapply the last saved snapshot manually, use:
 - `File > Reopen Previous Session`
 - `⌘ ⇧ O`
-- `cmux restore-session`
+- `cmux kill-restore-all-sessions`
 
 Under the hood, cmux writes a versioned snapshot under
 `~/Library/Application Support/cmux/` and agent hooks write session mappings

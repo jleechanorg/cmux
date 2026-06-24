@@ -3287,7 +3287,7 @@ struct CMUXCLI {
         }
         if command == "open" { try runOpenCommand(commandArgs: commandArgs, socketPath: resolvedSocketPath, explicitPassword: socketPasswordArg, jsonOutput: jsonOutput, idFormat: try resolvedIDFormat(jsonOutput: jsonOutput, raw: idFormatArg)); return }
         if command == "diff" { try runDiffCommand(commandArgs: commandArgs, socketPath: resolvedSocketPath, explicitPassword: socketPasswordArg, jsonOutput: jsonOutput, idFormat: try resolvedIDFormat(jsonOutput: jsonOutput, raw: idFormatArg)); return }
-        if command == "restore-session" {
+        if command == "kill-restore-all-sessions" {
             try runRestoreSession(
                 commandArgs: commandArgs,
                 socketPath: resolvedSocketPath,
@@ -5318,7 +5318,7 @@ struct CMUXCLI {
         "reorder-workspaces",
         "resize-pane",
         "respawn-pane",
-        "restore-session",
+        "kill-restore-all-sessions",
         "right-sidebar",
         "rpc",
         "select-workspace",
@@ -5610,7 +5610,30 @@ struct CMUXCLI {
     ) throws {
         let remaining = commandArgs.filter { $0 != "--" }
         if let unknown = remaining.first {
-            throw CLIError(message: "restore-session: unknown flag '\(unknown)'")
+            throw CLIError(message: "kill-restore-all-sessions: unknown flag '\(unknown)'")
+        }
+
+        // Require explicit human confirmation via the controlling terminal.
+        // Reads from /dev/tty directly so agents piping stdin cannot bypass this.
+        guard let tty = fopen("/dev/tty", "r") else {
+            throw CLIError(
+                message: "kill-restore-all-sessions: requires an interactive terminal. Run manually from your shell."
+            )
+        }
+        defer { fclose(tty) }
+        fputs(
+            "WARNING: kill-restore-all-sessions replaces ALL current workspaces with a saved snapshot.\n" +
+            "Type CMUX RESTORE APPROVED to confirm: ",
+            stderr
+        )
+        fflush(stderr)
+        var buf = [CChar](repeating: 0, count: 512)
+        guard fgets(&buf, 512, tty) != nil else {
+            throw CLIError(message: "kill-restore-all-sessions: aborted (no input).")
+        }
+        let phrase = String(cString: buf).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard phrase == "CMUX RESTORE APPROVED" else {
+            throw CLIError(message: "kill-restore-all-sessions: aborted. Confirmation phrase did not match.")
         }
 
         let initialClient = SocketClient(path: socketPath)
@@ -14214,13 +14237,13 @@ struct CMUXCLI {
             Enable or disable Agent Hibernation.
             Configure idle and live-terminal limits from Settings or cmux settings JSON.
             """
-        case "restore-session":
+        case "kill-restore-all-sessions":
             return """
-            Usage: cmux restore-session
+            Usage: cmux kill-restore-all-sessions
 
-            Reopen the previous saved cmux session.
+            DESTRUCTIVE: Replaces ALL current workspaces with the last saved session snapshot.
+            Requires typing CMUX RESTORE APPROVED at the interactive prompt.
 
-            If the app is already running, this restores the last saved session into the current app.
             If the app is not running, this launches cmux and lets startup restore reopen the saved session.
             """
         case "feedback":
@@ -34134,7 +34157,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
           shortcuts
           disable-browser | enable-browser | browser-status
           agent-hibernation <on|off>
-          restore-session
+          kill-restore-all-sessions
           open <path-or-url>... [--workspace <id|ref|index>] [--surface <id|ref|index>] [--pane <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>] [--no-focus]
           diff [patch-file|-] [--source <unstaged|staged|branch|last-turn>] [--unstaged|--staged|--branch|--last-turn] [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--cwd <path>] [--base <ref>] [--focus <true|false>] [--no-focus] [--title <text>] [--layout <split|unified>] [--font-size <points>]
           feedback [--email <email> --body <text> [--image <path> ...]]
