@@ -54,7 +54,7 @@ final class ScreensaverStateTracker {
         // NSDistributedNotificationCenter. Subscribing is passive — no
         // app enumeration, no TCC prompt. Names are stable across all
         // macOS versions that ship a screensaver daemon.
-        let center = NSDistributedNotificationCenter.default()
+        let center = DistributedNotificationCenter.default()
         observers.append(center.addObserver(
             forName: NSNotification.Name("com.apple.screensaver.didstart"),
             object: nil,
@@ -72,7 +72,7 @@ final class ScreensaverStateTracker {
     }
 
     deinit {
-        let center = NSDistributedNotificationCenter.default()
+        let center = DistributedNotificationCenter.default()
         for observer in observers {
             center.removeObserver(observer)
         }
