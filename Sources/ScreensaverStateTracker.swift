@@ -1,9 +1,9 @@
 import AppKit
 import Foundation
 
-/// Tracks the macOS screensaver's running state via passive
-/// `NSWorkspace` notifications, replacing the previous approach of
-/// enumerating running applications to find
+/// Tracks the macOS screensaver's running state via the screensaver
+/// daemon's Darwin distributed notifications, replacing the previous
+/// approach of enumerating running applications to find
 /// `com.apple.ScreenSaver.Engine`.
 ///
 /// ## Why this exists
@@ -17,28 +17,31 @@ import Foundation
 /// every fresh tagged build re-prompted the user once the first
 /// phone-forwarding notification reached the screensaver signal.
 ///
-/// The fix subscribes to `NSWorkspace.screensaverDidStartNotification`
-/// and `NSWorkspace.screensaverDidStopNotification`, which are passive
-/// system events. They never enumerate apps and never trigger App
-/// Management TCC.
+/// The fix subscribes to the screensaver daemon's Darwin distributed
+/// notifications (`com.apple.screensaver.didstart` /
+/// `com.apple.screensaver.didstop`) via `NSDistributedNotificationCenter`.
+/// Distributed notifications are passive broadcasts — they never
+/// enumerate apps and never trigger App Management TCC.
 ///
 /// ## Default state and edge case
 ///
-/// `isRunning` is initialized to `false` (screensaver not running). If the
-/// screensaver was already running when cmux launched, we won't detect
-/// it until the user wakes the screen and a stop notification fires. For
-/// the phone-forwarding "only when away" heuristic this means one push
-/// may leak to the phone before we re-detect — a deliberate trade-off
-/// for not enumerating apps at launch.
+/// `isRunning` is initialized to `false` (screensaver not running). If
+/// the screensaver was already running when cmux launched, we won't
+/// detect it until the user wakes the screen and a `didstop`
+/// notification fires. For the phone-forwarding "only when away"
+/// heuristic this means one push may leak to the phone before we
+/// re-detect — a deliberate trade-off for not enumerating apps at
+/// launch.
 @MainActor
 final class ScreensaverStateTracker {
     /// Single source of truth, owned by the main actor (subscribing to
-    /// AppKit notifications is a main-actor operation).
+    /// distributed notifications is a main-actor operation).
     static let shared = ScreensaverStateTracker()
 
     /// Last observed screensaver running state. `true` after a
-    /// `screensaverDidStartNotification`, `false` after
-    /// `screensaverDidStopNotification`, `false` before either fires.
+    /// `com.apple.screensaver.didstart` notification, `false` after a
+    /// `com.apple.screensaver.didstop` notification, `false` before
+    /// either fires.
     private(set) var isRunning: Bool = false
 
     /// Strong refs to the observer tokens — `addObserver` returns
@@ -47,16 +50,20 @@ final class ScreensaverStateTracker {
     private var observers: [NSObjectProtocol] = []
 
     private init() {
-        let center = NSWorkspace.shared.notificationCenter
+        // The screensaver daemon posts these Darwin notifications via
+        // NSDistributedNotificationCenter. Subscribing is passive — no
+        // app enumeration, no TCC prompt. Names are stable across all
+        // macOS versions that ship a screensaver daemon.
+        let center = NSDistributedNotificationCenter.default()
         observers.append(center.addObserver(
-            forName: NSWorkspace.screensaverDidStartNotification,
+            forName: NSNotification.Name("com.apple.screensaver.didstart"),
             object: nil,
             queue: .main
         ) { [weak self] _ in
             self?.isRunning = true
         })
         observers.append(center.addObserver(
-            forName: NSWorkspace.screensaverDidStopNotification,
+            forName: NSNotification.Name("com.apple.screensaver.didstop"),
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -65,7 +72,7 @@ final class ScreensaverStateTracker {
     }
 
     deinit {
-        let center = NSWorkspace.shared.notificationCenter
+        let center = NSDistributedNotificationCenter.default()
         for observer in observers {
             center.removeObserver(observer)
         }
