@@ -29318,7 +29318,10 @@ struct CMUXCLI {
         // timeout; Codex telemetry stays short so it never delays Codex's own
         // approval reviewer. Most nested agents use milliseconds. Codex, Grok,
         // and Antigravity hook schemas use seconds, so normalize before writing.
-        for agentEvent in def.feedHookEvents {
+        let feedHookEvents = def.name == "codex" && Self.codexToolHooksDisabled
+            ? def.feedHookEvents.filter { !CodexHookInjectionSchema.isToolExecutionEvent($0) }
+            : def.feedHookEvents
+        for agentEvent in feedHookEvents {
             let feedCmd = feedHookCommand(for: def, agentEvent: agentEvent)
             let feedTimeoutMs = feedHookTimeoutMs(for: def, agentEvent: agentEvent)
             switch def.format {
@@ -30167,6 +30170,11 @@ export default CMUXSessionRestore;
         }
 
         var hooks = existing["hooks"] as? [String: Any] ?? [:]
+        let codexHookTrustEntriesBeforeReconciliation = Self.codexHookTrustEntries(
+            hooks: hooks,
+            hooksFilePath: filePath,
+            def: def
+        )
         let newHooks = buildHooksDict(for: def)
 
         // Remove existing cmux-owned entries (both the per-agent hook
@@ -30286,6 +30294,8 @@ export default CMUXSessionRestore;
             hooksFilePath: filePath,
             def: def
         )
+        let codexHookTrustEntriesToRemove =
+            codexHookTrustEntriesBeforeReconciliation + codexHookTrustEntries
         let codexHookTrustEscapedKeyPrefixes = Self.codexHookTrustEscapedKeyPrefixes(
             hooksFilePath: filePath,
             def: def
@@ -30351,7 +30361,7 @@ export default CMUXSessionRestore;
                 }
                 let trustClean = Self.codexConfigTomlRemovingHookTrust(
                     in: existingContent,
-                    entries: codexHookTrustEntries,
+                    entries: codexHookTrustEntriesToRemove,
                     removingEscapedKeyPrefixes: codexHookTrustEscapedKeyPrefixes,
                     removingTrustedHashes: codexLegacyHookTrustHashes
                 )
