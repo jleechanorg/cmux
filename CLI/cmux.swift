@@ -30414,6 +30414,28 @@ export default CMUXSessionRestore;
         }
     }
 
+    static func codexPersistentToolHookDisableStateOverride(for def: AgentHookDef) -> String? {
+        let hooksFilePath = "\(def.resolvedConfigDir())/\(def.configFile)"
+        guard let data = FileManager.default.contents(atPath: hooksFilePath),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let hooks = root["hooks"] as? [String: Any] else {
+            return nil
+        }
+        let entries = codexHookTrustEntries(
+            hooks: hooks,
+            hooksFilePath: hooksFilePath,
+            def: def
+        ).filter {
+            $0.eventLabel == "pre_tool_use" || $0.eventLabel == "post_tool_use"
+        }.sorted { $0.key < $1.key }
+        guard !entries.isEmpty else { return nil }
+
+        let state = entries.map { entry in
+            "\"\(tomlBasicStringContent(entry.key))\"={enabled=false}"
+        }.joined(separator: ",")
+        return "hooks.state={\(state)}"
+    }
+
     private func pruneLegacyGrokHookFileIfNeeded(
         def: AgentHookDef,
         configDir: String,
@@ -30648,6 +30670,7 @@ export default CMUXSessionRestore;
     struct CodexHookTrustEntry: Equatable {
         let key: String
         let trustedHash: String
+        let eventLabel: String
     }
 
     private struct CodexHookTrustInstallResult: Equatable {
@@ -30843,7 +30866,11 @@ export default CMUXSessionRestore;
                         timeoutMs: timeoutMs,
                         statusMessage: statusMessage
                     )
-                    entries.append(CodexHookTrustEntry(key: key, trustedHash: trustedHash))
+                    entries.append(CodexHookTrustEntry(
+                        key: key,
+                        trustedHash: trustedHash,
+                        eventLabel: eventLabel
+                    ))
                 }
             }
         }
