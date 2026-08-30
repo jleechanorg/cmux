@@ -1033,6 +1033,80 @@ struct BrowserWebContentProcessTests {
     }
 
     @Test
+    func webAuthnPageBridgeRelaysCredentialCreateThroughContentWorldHandler() async throws {
+        let configuration = WKWebViewConfiguration()
+        BrowserPanel.configureWebViewConfiguration(
+            configuration,
+            websiteDataStore: .nonPersistent()
+        )
+        let probe = BrowserWebAuthnReplyProbe()
+        configuration.userContentController.addScriptMessageHandler(
+            probe,
+            contentWorld: BrowserWebAuthnBridgeContract.contentWorld,
+            name: BrowserWebAuthnBridgeContract.handlerName
+        )
+        defer {
+            configuration.userContentController.removeScriptMessageHandler(
+                forName: BrowserWebAuthnBridgeContract.handlerName,
+                contentWorld: BrowserWebAuthnBridgeContract.contentWorld
+            )
+        }
+        let webView = WKWebView(
+            frame: NSRect(x: 0, y: 0, width: 320, height: 240),
+            configuration: configuration
+        )
+        let loadDelegate = BrowserWebContentProcessLoadDelegate()
+        webView.navigationDelegate = loadDelegate
+        defer { webView.navigationDelegate = nil }
+
+        try await loadDelegate.load(
+            """
+            <!doctype html>
+            <html><body>passkey create relay probe</body></html>
+            """,
+            in: webView,
+            baseURL: URL(string: "https://example.com/")!
+        )
+
+        let result = try await webView.callAsyncJavaScript(
+            """
+            const credential = await navigator.credentials.create({
+              publicKey: {
+                challenge: new Uint8Array([1, 2, 3, 4]).buffer,
+                rp: { id: "example.com", name: "Example" },
+                user: {
+                  id: new Uint8Array([5, 6, 7]).buffer,
+                  name: "person@example.com",
+                  displayName: "Example Person"
+                },
+                pubKeyCredParams: [{ type: "public-key", alg: -7 }]
+              }
+            });
+            return {
+              credentialId: credential && credential.id,
+              rawIDLength: credential && credential.rawId && credential.rawId.byteLength,
+              clientDataJSONLength:
+                credential && credential.response && credential.response.clientDataJSON.byteLength,
+              attestationObjectLength:
+                credential && credential.response && credential.response.attestationObject.byteLength,
+              transports:
+                credential && credential.response && credential.response.getTransports().join(",")
+            };
+            """,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        ) as? [String: Any]
+
+        #expect(result?["credentialId"] as? String == "DQ4P")
+        #expect((result?["rawIDLength"] as? NSNumber)?.intValue == 3)
+        #expect((result?["clientDataJSONLength"] as? NSNumber)?.intValue == 2)
+        #expect((result?["attestationObjectLength"] as? NSNumber)?.intValue == 2)
+        #expect(result?["transports"] as? String == "internal,usb")
+        #expect(probe.receivedKinds == ["createCredential"])
+    }
+
+    @Test
     func webAuthnNativeBridgeScopesParentDomainRelyingPartyIDs() throws {
         let googleOrigin = try #require(
             BrowserWebAuthnSecurityOrigin(url: URL(string: "https://accounts.google.com")!)
@@ -1442,6 +1516,26 @@ private final class BrowserWebAuthnReplyProbe: NSObject, WKScriptMessageHandlerW
                             "authenticatorData": "Bgc",
                             "signature": "CAk",
                             "userHandle": "Cg",
+                        ],
+                        "clientExtensionResults": [:],
+                    ],
+                ],
+                nil
+            )
+        case "createCredential":
+            replyHandler(
+                [
+                    "ok": true,
+                    "credential": [
+                        "type": "public-key",
+                        "id": "DQ4P",
+                        "rawId": "DQ4P",
+                        "authenticatorAttachment": "platform",
+                        "responseKind": "attestation",
+                        "response": [
+                            "clientDataJSON": "Cww",
+                            "attestationObject": "DQ4",
+                            "transports": ["internal", "usb"],
                         ],
                         "clientExtensionResults": [:],
                     ],
