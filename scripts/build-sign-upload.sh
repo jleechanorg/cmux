@@ -47,13 +47,18 @@ fi
 
 TAG="$1"
 SIGN_HASH="A050CC7E193C8221BDBA204E731B046CDCCC1B30"
-ENTITLEMENTS="cmux.entitlements"
+ENTITLEMENTS="cmux.release.entitlements"
 APP_PATH="build/Build/Products/Release/cmux.app"
 GHOSTTYKIT_CRASH_REPORT_SUBDIR="cmux/crash"
+RELEASE_APP_ID="7WLXT3NR37.com.cmuxterm.app"
 
 # --- Pre-flight ---
 source ~/.secrets/cmuxterm.env
 export SPARKLE_PRIVATE_KEY
+if [[ -z "${APPLE_RELEASE_PROVISIONING_PROFILE_BASE64:-}" ]]; then
+  echo "Missing APPLE_RELEASE_PROVISIONING_PROFILE_BASE64 in ~/.secrets/cmuxterm.env" >&2
+  exit 1
+fi
 for tool in zig xcodebuild create-dmg xcrun codesign ditto gh; do
   command -v "$tool" >/dev/null || { echo "MISSING: $tool" >&2; exit 1; }
 done
@@ -93,6 +98,35 @@ echo "Sparkle keys injected"
 # cmux is a non-sandboxed app. Sparkle's sandbox-only XPC services make the
 # installer handoff wait for an agent connection that never arrives.
 ./scripts/remove-sparkle-sandbox-xpc-services.sh "$APP_PATH"
+
+# --- Embed release provisioning profile ---
+echo "Embedding release provisioning profile..."
+PROFILE_PATH="$APP_PATH/Contents/embedded.provisionprofile"
+TMP_PROFILE="$(mktemp /tmp/cmux-release-profile.XXXXXX)"
+TMP_PLIST="$(mktemp /tmp/cmux-release-profile.XXXXXX.plist)"
+trap 'rm -f "$TMP_PROFILE" "$TMP_PLIST"' EXIT
+printf '%s' "$APPLE_RELEASE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$TMP_PROFILE"
+security cms -D -i "$TMP_PROFILE" > "$TMP_PLIST"
+
+PROFILE_APP_ID="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$TMP_PLIST")"
+if [[ "$PROFILE_APP_ID" != "$RELEASE_APP_ID" ]]; then
+  echo "Release provisioning profile targets unexpected app ID: $PROFILE_APP_ID" >&2
+  exit 1
+fi
+
+WEBAUTHN_ENTITLEMENT="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.developer.web-browser.public-key-credential" "$TMP_PLIST")"
+if [[ "$WEBAUTHN_ENTITLEMENT" != "true" ]]; then
+  echo "Release provisioning profile missing WebAuthn browser entitlement" >&2
+  exit 1
+fi
+
+PROVISIONS_ALL_DEVICES="$(/usr/libexec/PlistBuddy -c "Print :ProvisionsAllDevices" "$TMP_PLIST")"
+if [[ "$PROVISIONS_ALL_DEVICES" != "true" ]]; then
+  echo "Release provisioning profile is not a Developer ID all-devices profile" >&2
+  exit 1
+fi
+
+cp "$TMP_PROFILE" "$PROFILE_PATH"
 
 # --- Codesign ---
 echo "Codesigning..."

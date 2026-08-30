@@ -2,7 +2,7 @@
 
 Release through the PR flow, then build and publish locally instead of waiting on the CI release workflow.
 
-Follow [release.md](release.md) "Shared prep" (version, changelog, contributors, `./scripts/bump-version.sh`) and its changelog and contributor-credit rules, then steps 5 through 8 (branch, PR, `gh pr checks --watch`, `gh pr merge --squash --delete-branch`, `./scripts/release-pretag-guard.sh`, tag and push). `skills/cmux-release/SKILL.md` covers the bump and tag mechanics.
+Follow [release.md](release.md) "Shared prep" (version, changelog, contributors, `./scripts/bump-version.sh`) and its changelog and contributor-credit rules, then steps 5 through 8 (branch, PR, `gh pr checks --watch`, `gh pr merge --squash --delete-branch`, `./scripts/release-pretag-guard.sh`, tag and push). `skills/cmux-release/SKILL.md` covers the bump and tag mechanics. Before the local build, ensure `~/.secrets/cmuxterm.env` provides `APPLE_RELEASE_PROVISIONING_PROFILE_BASE64`; it must be the Developer ID all-devices profile for `7WLXT3NR37.com.cmuxterm.app` and include the browser WebAuthn entitlement.
 
 ## Delta: build locally instead of from CI
 
