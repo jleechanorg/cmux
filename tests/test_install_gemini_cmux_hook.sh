@@ -110,4 +110,12 @@ for flag in -h --help; do
   fi
 done
 
+echo "=== Test 6: Native Antigravity Uninstall Invocation ==="
+rm -f "$LOG_FILE"
+"$SCRIPT" --uninstall >/dev/null
+if ! grep -Fq "cmux args: hooks uninstall antigravity --yes" "$LOG_FILE"; then
+  echo "FAIL: expected native Antigravity uninstall invocation" >&2
+  exit 1
+fi
+
 echo "ALL TESTS PASSED"
