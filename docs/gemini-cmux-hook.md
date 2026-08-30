@@ -1,63 +1,76 @@
-# Google Antigravity cmux Hook Integration
+# Antigravity cmux Hook Launcher
 
-cmux natively supports Google Antigravity (AGY) agent lifecycle hooks for turn-completion notifications, session tracking, and status updates.
+## Overview & Scope
 
----
+`scripts/install-gemini-cmux-hook.sh` is a transparent, non-destructive convenience launcher that invokes native cmux hook management for Google Antigravity (`agy`).
 
-## Native Antigravity Hook Architecture
+cmux provides native, first-class support for Antigravity via `cmux hooks setup antigravity --yes`. This launcher script validates that `cmux` is available on `PATH`, executes the native command with non-interactive confirmation, and transparently preserves exit codes, standard output, and standard error.
 
-- **Native Support**: cmux includes first-class native support for Antigravity (`antigravity`, alias: `agy`).
-- **Configuration Path**: `~/.gemini/config/hooks.json`
-- **Native CLI Commands**:
-  - Install: `cmux hooks setup antigravity --yes` (or `cmux hooks antigravity install --yes`)
-  - Uninstall: `cmux hooks uninstall antigravity --yes` (or `cmux hooks antigravity uninstall --yes`)
-- **Lifecycle Events**:
-  - `SessionStart` &rarr; `session-start`
-  - `PreInvocation` &rarr; `prompt-submit`
-  - `Stop` &rarr; `stop`
-  - `turn-completion` &rarr; `stop`
-  - `Notification` &rarr; `notification`
-  - `SessionEnd` &rarr; `session-end`
-- **Safe Completion Notifications**: Hooks use pinned dispatch (`cmux-antigravity-hook-v2`) to trigger generic turn-completion notifications (`cmux notify`). Hook invocations never capture, inspect, log, or forward user prompts, context tokens, workspace files, task payloads, stdin data, or environment secrets.
-- **Separate Gemini CLI Integration**: Gemini CLI hooks use `~/.gemini/settings.json` via `cmux hooks setup gemini` / `cmux hooks uninstall gemini`. Antigravity hooks use `~/.gemini/config/hooks.json`; `settings.json` is a separate integration that remains completely untouched.
+> [!NOTE]
+> This installer is a lightweight convenience wrapper around official cmux Antigravity support, not a temporary workaround. It does not parse, modify, or overwrite any configuration files directly.
 
 ---
 
-## Compatibility & Convenience Launcher
+## Native Antigravity Integration
 
-The repository provides an optional convenience launcher script at [`/Users/jleechan/projects_reference/cmux-worktrees/gemini-antigravity-hook/scripts/install-gemini-cmux-hook.sh`](file:///Users/jleechan/projects_reference/cmux-worktrees/gemini-antigravity-hook/scripts/install-gemini-cmux-hook.sh).
+Antigravity stores its hook configurations natively in `~/.gemini/config/hooks.json`.
 
-This script is an optional convenience wrapper that checks that `cmux` is available on `PATH` and directly executes:
+### Direct cmux CLI Commands
 
-```bash
-cmux hooks setup antigravity --yes
-```
+You can configure or remove Antigravity hooks directly using `cmux`:
 
-It performs no direct filesystem modifications and does not read or write `~/.gemini/settings.json` or `~/.gemini/config/hooks.json`.
+- **Install / Setup**:
+  ```bash
+  cmux hooks setup antigravity --yes
+  # or using the agy alias:
+  cmux hooks setup agy --yes
+  ```
 
-### Usage
+- **Uninstall**:
+  ```bash
+  cmux hooks uninstall antigravity --yes
+  # or using the agy alias:
+  cmux hooks uninstall agy --yes
+  ```
 
-```bash
-./scripts/install-gemini-cmux-hook.sh
-```
+### Launcher Script Usage
+
+Alternatively, run the convenience script:
+
+- **Setup**:
+  ```bash
+  ./scripts/install-gemini-cmux-hook.sh
+  ```
+
+- **Uninstall**:
+  ```bash
+  ./scripts/install-gemini-cmux-hook.sh --uninstall
+  ```
+
+- **Help**:
+  ```bash
+  ./scripts/install-gemini-cmux-hook.sh --help
+  ```
 
 ---
 
-## Native Uninstallation
+## Distinction: Antigravity vs. Gemini CLI
 
-To remove native Antigravity hooks from `~/.gemini/config/hooks.json`, run:
+- **Antigravity (`agy`)**: Uses `~/.gemini/config/hooks.json` with the `antigravityJSON` schema (events: `SessionStart`, `PreInvocation`, `Stop`, `turn-completion`, `Notification`, `SessionEnd`).
+- **Gemini CLI**: Separately uses `~/.gemini/settings.json` with nested command hooks (including `AfterAgent`, `BeforeAgent`, `SessionStart`, `SessionEnd`), managed natively via `cmux hooks setup gemini --yes`.
 
-```bash
-cmux hooks uninstall antigravity --yes
-```
+The `install-gemini-cmux-hook.sh` launcher targets Antigravity and does not create or modify `~/.gemini/settings.json`.
 
 ---
 
-## Automated Verification
+## Verification & Testing
 
-The integration behavior is verified by the standalone test script at [`/Users/jleechan/projects_reference/cmux-worktrees/gemini-antigravity-hook/tests/test_install_gemini_cmux_hook.sh`](file:///Users/jleechan/projects_reference/cmux-worktrees/gemini-antigravity-hook/tests/test_install_gemini_cmux_hook.sh):
+Automated behavioral tests verify execution with mock binaries under temporary `HOME` environments:
 
 ```bash
+# Run python test suite
+pytest -v tests/test_gemini_cmux_hook_install.py
+
+# Run direct bash test suite
 bash tests/test_install_gemini_cmux_hook.sh
 ```
-
